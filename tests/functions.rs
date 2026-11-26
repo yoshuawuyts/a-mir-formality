@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 
-use a_mir_formality::{crates, FormalityTest};
+use a_mir_formality::{crates, test_program_ok, FormalityTest};
+use formality_rust::grammar::{Crates, Fn};
+use formality_rust::rust::{term, try_term};
 
 #[test]
 fn ok() {
@@ -68,4 +70,50 @@ fn omitted_return_type_executes() {
     }])
     .expect_output("42\n")
     .ok()
+}
+
+#[test]
+fn with_const_function_checks_its_body_normally() {
+    let _ = test_program_ok(crates![crate Foo {
+        trait Bound {}
+
+        fn ordinary() {}
+
+        fn annotate() with const {
+            ordinary();
+        }
+
+        fn annotate_generic<T>(value: T) -> T with const where T: Bound {
+            return value;
+        }
+
+        fn with() {}
+    }])
+    .unwrap();
+}
+
+#[test]
+fn with_const_function_round_trips() {
+    let function: Fn = term("fn answer() -> i32 with const { trusted }");
+    assert_eq!(term::<Fn>(&format!("{function:?}")), function);
+}
+
+#[test]
+fn with_const_function_rejects_invalid_clauses() {
+    for source in [
+        "fn f() with {}",
+        "fn f() with Const {}",
+        "fn f() with other {}",
+    ] {
+        assert!(try_term::<Fn>(source).is_err(), "accepted {source}");
+    }
+}
+
+#[test]
+fn with_const_function_is_not_executable() {
+    let program: Crates = term(crates![crate Foo { fn main() with const {} }]);
+    let minirust_error = formality_rust::codegen::codegen_program(&program).unwrap_err();
+    assert!(minirust_error
+        .to_string()
+        .contains("MiniRust codegen does not support `with const` on functions"));
 }

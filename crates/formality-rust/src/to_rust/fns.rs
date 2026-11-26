@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::grammar::{Fallible, Fn, FnBody, InputArg, MaybeFnBody};
+use crate::grammar::{Fallible, Fn, FnBody, InputArg, MaybeFnBody, MaybeWithEffects};
 use crate::prove::Safety;
 
 use crate::to_rust::{
@@ -20,6 +20,9 @@ pub fn lower_fn(
         },
         generics,
     ) = open_bounded!(ctx, function.binder.clone());
+    if let MaybeWithEffects::With(effects) = &term.effects {
+        anyhow::bail!("Rust lowering does not support `{effects:?}` on functions");
+    }
     let params = term
         .input_args
         .iter()
@@ -62,6 +65,24 @@ pub fn lower_fn_body(ctx: &mut Context, body: &MaybeFnBody) -> Fallible<syntax::
 
 #[cfg(test)]
 mod test {
+    use super::{lower_fn, syntax, Context};
+    use crate::rust::term;
+
+    #[test]
+    fn with_const_function_is_not_lowered() {
+        let function = term("fn prepare() with const {}");
+        let error = lower_fn(
+            &mut Context::default(),
+            &function,
+            syntax::Visibility::Public,
+        )
+        .err()
+        .expect("Rust lowering must reject the annotation");
+        assert_eq!(
+            error.to_string(),
+            "Rust lowering does not support `with const` on functions"
+        );
+    }
 
     #[test]
     fn simple_fn() {

@@ -10,6 +10,12 @@
 
 The `grammar` module defines the Rust terms used by the model: crates, items, types, where-clauses, trait references, and the MIR-like expression language used in function bodies.
 
+Function signatures can carry the experimental annotation `with const`, as in
+`fn prepare() with const {}`. Write it after the return type (or parameter list
+if the return type is omitted), before any `where` clause. This is notation
+only: checking the annotation does not enforce const rules, and Rust lowering
+and MiniRust code generation do not support it yet.
+
 ## `check/`
 
 The main checking entry point is `check_all_crates`:

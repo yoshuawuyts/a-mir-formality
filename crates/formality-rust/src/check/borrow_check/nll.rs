@@ -516,7 +516,7 @@ judgment_fn! {
             (let Fn { id: _, safety, binder } = env.crates().fn_named(fn_id)?)
             // FIXME: add `unsafe` blocks and only allow calling unsafe functions from there.
             (ProvenSet::singleton((safety, ProofTree::leaf("safety"))) => Safety::Safe)
-            (let FnBoundData { input_args, output_ty, where_clauses, body: _ } =
+            (let FnBoundData { input_args, output_ty, where_clauses, .. } =
                 binder.instantiate_with(parameters)?)
 
             // Check argument count matches
