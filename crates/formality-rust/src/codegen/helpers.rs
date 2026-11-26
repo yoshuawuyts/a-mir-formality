@@ -170,8 +170,11 @@ pub(super) fn resolve_fn_body(
 ) -> Fallible<(grammar::FnBoundData, Block)> {
     let fn_def = g.crates.fn_named(&key.id)?;
     let fn_data = fn_def.binder.instantiate_with(&key.args)?;
-    if let grammar::MaybeWithEffects::With(effects) = &fn_data.effects {
-        anyhow::bail!("MiniRust codegen does not support `{effects:?}` on functions");
+    if !fn_data.effects.is_empty() {
+        anyhow::bail!(
+            "MiniRust codegen does not support `with {:?}` on functions",
+            fn_data.effects
+        );
     }
     let body = match &fn_data.body {
         grammar::MaybeFnBody::FnBody(grammar::FnBody::Expr(b)) => b.clone(),

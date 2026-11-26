@@ -171,7 +171,9 @@ fn test_parse_trusted_fn() {
                                         output_ty: RigidTy(
                                             (),
                                         ),
-                                        effects: None,
+                                        effects: EffectList {
+                                            elements: [],
+                                        },
                                         where_clauses: [],
                                         body: FnBody(
                                             TrustedFnBody,
@@ -218,7 +220,9 @@ fn test_parse_fn_without_return_type() {
                                         output_ty: RigidTy(
                                             (),
                                         ),
-                                        effects: None,
+                                        effects: EffectList {
+                                            elements: [],
+                                        },
                                         where_clauses: [],
                                         body: FnBody(
                                             TrustedFnBody,

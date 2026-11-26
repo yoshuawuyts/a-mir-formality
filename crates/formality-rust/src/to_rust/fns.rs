@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::grammar::{Fallible, Fn, FnBody, InputArg, MaybeFnBody, MaybeWithEffects};
+use crate::grammar::{Fallible, Fn, FnBody, InputArg, MaybeFnBody};
 use crate::prove::Safety;
 
 use crate::to_rust::{
@@ -20,8 +20,11 @@ pub fn lower_fn(
         },
         generics,
     ) = open_bounded!(ctx, function.binder.clone());
-    if let MaybeWithEffects::With(effects) = &term.effects {
-        anyhow::bail!("Rust lowering does not support `{effects:?}` on functions");
+    if !term.effects.is_empty() {
+        anyhow::bail!(
+            "Rust lowering does not support `with {:?}` on functions",
+            term.effects
+        );
     }
     let params = term
         .input_args

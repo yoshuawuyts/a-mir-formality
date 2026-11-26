@@ -210,7 +210,7 @@ judgment_fn! {
         )
 
         (
-            (fail "MiniRust codegen does not support `{:?}` on blocks", effects)
+            (fail "MiniRust codegen does not support `with {:?}` on blocks", effects)
             ---- ("effect block")
             (codegen_stmt(_global, _cfn, _scope, Stmt::EffectBlock { effects, .. }) => ())
         )

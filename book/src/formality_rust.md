@@ -12,9 +12,10 @@ The `grammar` module defines the Rust terms used by the model: crates, items, ty
 
 Function signatures can carry the experimental annotation `with const`, as in
 `fn prepare() with const {}`. Write it after the return type (or parameter list
-if the return type is omitted), before any `where` clause. This is notation
-only: checking the annotation does not enforce const rules, and Rust lowering
-and MiniRust code generation do not support it yet.
+if the return type is omitted), before any `where` clause. Like `where`
+predicates, effects are stored as a list, empty when the clause is omitted.
+This is notation only: checking the annotation does not enforce const rules,
+and Rust lowering and MiniRust code generation do not support it yet.
 
 Use `with const { ... }` as a nested block statement. The block has its own
 local scope, just like an unannotated block; its annotation does not affect

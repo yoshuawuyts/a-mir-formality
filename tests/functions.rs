@@ -85,6 +85,7 @@ fn with_const_function_checks_its_body_normally() {
 
         fn annotate() with const {
             ordinary();
+            with();
         }
 
         fn annotate_generic<T>(value: T) -> T with const where T: Bound {
@@ -99,7 +100,12 @@ fn with_const_function_checks_its_body_normally() {
 #[test]
 fn with_const_function_round_trips() {
     let function: Fn = term("fn answer() -> i32 with const { trusted }");
+    assert_eq!(function.binder.peek().effects, term("const"));
     assert_eq!(term::<Fn>(&format!("{function:?}")), function);
+
+    let plain: Fn = term("fn answer() -> i32 { trusted }");
+    assert!(plain.binder.peek().effects.is_empty());
+    assert_eq!(term::<Fn>(&format!("{plain:?}")), plain);
 }
 
 #[test]
@@ -108,6 +114,7 @@ fn with_const_function_rejects_invalid_clauses() {
         "fn f() with {}",
         "fn f() with Const {}",
         "fn f() with other {}",
+        "fn f() with const + const {}",
     ] {
         assert!(try_term::<Fn>(source).is_err(), "accepted {source}");
     }
@@ -142,6 +149,7 @@ fn with_const_block_round_trips() {
     let statement: Stmt = term("with const { prepare(); }");
     assert!(matches!(statement, Stmt::EffectBlock { .. }));
     assert_eq!(term::<Stmt>(&format!("{statement:?}")), statement);
+    assert!(try_term::<Stmt>("with {}").is_err());
     assert!(try_term::<Stmt>("with Const {}").is_err());
 }
 
@@ -164,6 +172,7 @@ fn with_const_closure_round_trips() {
         assert!(matches!(expr, Expr::EffectClosure { .. }));
         assert_eq!(term::<Expr>(&format!("{expr:?}")), expr);
     }
+    assert!(try_term::<Expr>("|| with {}").is_err());
     assert!(try_term::<Expr>("|| with Const {}").is_err());
 }
 

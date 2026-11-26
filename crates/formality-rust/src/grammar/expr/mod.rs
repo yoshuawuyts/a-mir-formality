@@ -3,8 +3,8 @@ use std::sync::Arc;
 use formality_core::{id, term};
 
 use crate::grammar::{
-    AdtId, Binder, FieldName, InputArg, Lt, Parameter, RefKind, ScalarId, TraitId, Ty, ValueId,
-    WithEffects,
+    AdtId, Binder, EffectList, FieldName, InputArg, Lt, Parameter, RefKind, ScalarId, TraitId, Ty,
+    ValueId,
 };
 
 mod parse_expr;
@@ -137,8 +137,8 @@ pub enum Stmt {
     #[cast]
     Block(Block),
 
-    #[grammar($effects $block)]
-    EffectBlock { effects: WithEffects, block: Block },
+    #[grammar(with $effects $block)]
+    EffectBlock { effects: EffectList, block: Block },
 
     /// `exists<'a, 'b> { stmts }`
     ///
@@ -162,10 +162,10 @@ pub enum Expr {
     #[reject(Expr::Place(_))]
     Parens(Arc<Expr>),
 
-    #[grammar(| $,params | $effects $body)]
+    #[grammar(| $,params | with $effects $body)]
     EffectClosure {
         params: Vec<InputArg>,
-        effects: WithEffects,
+        effects: EffectList,
         body: Block,
     },
 
