@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use a_mir_formality::{crates, test_program_ok, FormalityTest};
-use formality_rust::grammar::{Crates, Fn};
+use formality_rust::grammar::{expr::Stmt, Crates, Fn};
 use formality_rust::rust::{term, try_term};
 
 #[test]
@@ -116,4 +116,36 @@ fn with_const_function_is_not_executable() {
     assert!(minirust_error
         .to_string()
         .contains("MiniRust codegen does not support `with const` on functions"));
+}
+
+#[test]
+fn with_const_block_checks_its_body_in_a_nested_scope() {
+    let _ = test_program_ok(crates![crate Foo {
+        fn main() -> i32 {
+            let value: i32;
+            with const {
+                value = 1_i32;
+                let value: bool = true;
+            }
+            return value;
+        }
+    }])
+    .unwrap();
+}
+
+#[test]
+fn with_const_block_round_trips() {
+    let statement: Stmt = term("with const { prepare(); }");
+    assert!(matches!(statement, Stmt::EffectBlock { .. }));
+    assert_eq!(term::<Stmt>(&format!("{statement:?}")), statement);
+    assert!(try_term::<Stmt>("with Const {}").is_err());
+}
+
+#[test]
+fn with_const_block_is_not_executable() {
+    let program: Crates = term(crates![crate Foo { fn main() { with const {} } }]);
+    let error = formality_rust::codegen::codegen_program(&program).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("MiniRust codegen does not support `with const` on blocks"));
 }

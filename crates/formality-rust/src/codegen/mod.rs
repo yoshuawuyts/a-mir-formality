@@ -210,6 +210,12 @@ judgment_fn! {
         )
 
         (
+            (fail "MiniRust codegen does not support `{:?}` on blocks", effects)
+            ---- ("effect block")
+            (codegen_stmt(_global, _cfn, _scope, Stmt::EffectBlock { effects, .. }) => ())
+        )
+
+        (
             (let block = instantiate_erased(binder)?)
             (codegen_block(global, cfn, scope, block) => (code, global, cfn))
             ---- ("exists")

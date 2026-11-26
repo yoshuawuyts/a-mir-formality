@@ -332,7 +332,9 @@ impl LiveBefore for Stmt {
                 // The return expression is evaluated, but nothing after return is live.
                 expr.live_before(env, scopes, LivePlaces::default())
             }
-            Stmt::Block(block) => block.live_before(env, scopes, places_live),
+            Stmt::Block(block) | Stmt::EffectBlock { block, .. } => {
+                block.live_before(env, scopes, places_live)
+            }
             Stmt::Exists { binder } => {
                 let (_vars, block) = binder.open();
                 block.live_before(env, scopes, places_live)

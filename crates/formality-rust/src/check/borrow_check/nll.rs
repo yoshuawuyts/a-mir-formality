@@ -301,6 +301,12 @@ judgment_fn! {
         )
 
         (
+            (borrow_check_block(env, assumptions, state, block, places_live_on_exit) => state)
+            ------------------------------------------------------------ ("effect block")
+            (borrow_check_statement(env, assumptions, state, Stmt::EffectBlock { block, .. }, places_live_on_exit) => (env, state))
+        )
+
+        (
             (if feature_gate_enabled_in_program(&env.program, &FeatureGateName::PoloniusUnlocked))!
             // Existential variables: enter the binder and check the inner block
             (scope(env.enter_existentially(&with_variables(binder)) => (env, (vars, block))) with(state)

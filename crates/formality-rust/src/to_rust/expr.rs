@@ -52,6 +52,9 @@ pub fn lower_stmt(ctx: &mut Context, stmt: &Stmt) -> Fallible<syntax::Stmt> {
             expr: lower_expr(ctx, expr)?,
         }),
         Stmt::Block(block) => Ok(syntax::Stmt::Block(lower_block(ctx, block)?)),
+        Stmt::EffectBlock { effects, .. } => {
+            anyhow::bail!("Rust lowering does not support `{effects:?}` on blocks")
+        }
         Stmt::Exists { binder } => lower_exists_stmt(ctx, binder),
         Stmt::Print { expr } => Ok(syntax::Stmt::Expr(lower_expr(ctx, expr)?)),
     }
@@ -252,6 +255,19 @@ pub fn lower_named_field_expr(
 
 #[cfg(test)]
 mod test {
+    use super::{lower_stmt, Context};
+    use crate::rust::term;
+
+    #[test]
+    fn with_const_block_is_not_lowered() {
+        let error = lower_stmt(&mut Context::default(), &term("with const {}"))
+            .err()
+            .expect("Rust lowering must reject the annotation");
+        assert_eq!(
+            error.to_string(),
+            "Rust lowering does not support `with const` on blocks"
+        );
+    }
 
     #[test]
     fn simple_fn_body() {
