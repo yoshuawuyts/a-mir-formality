@@ -377,6 +377,9 @@ impl LiveBefore for Expr {
 
             Expr::Parens(expr) => expr.live_before(env, scopes, places_live),
 
+            // The checker rejects closure values before analyzing captures.
+            Expr::EffectClosure { .. } => places_live,
+
             // Literals don't access any places.
             Expr::Literal { .. } | Expr::True | Expr::False => places_live,
 

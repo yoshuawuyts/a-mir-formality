@@ -405,6 +405,12 @@ judgment_fn! {
         )
 
         (
+            (fail "effect-annotated closure values are not supported yet")
+            ---- ("effect closure")
+            (borrow_check_expr(_env, _assumptions, _state, Expr::EffectClosure { .. }, _places_live_on_exit) => ())
+        )
+
+        (
             (borrow_check_expr(env, assumptions, state, lhs, rhs.live_before(env, &state, places_live_on_exit)) => (lhs_ty, state))
             (prove_ty_is_rigid(env, assumptions, state, &lhs_ty) => (RigidTy { name: RigidName::ScalarId(_), parameters: _ }, state))
             (borrow_check_expr_has_ty(env, assumptions, state, rhs, &lhs_ty, places_live_on_exit) => state)

@@ -248,6 +248,12 @@ judgment_fn! {
         )
 
         (
+            (fail "MiniRust codegen does not support effect-annotated closures")
+            ---- ("effect closure")
+            (codegen_expr_into(_global, _cfn, _scope, _target, Expr::EffectClosure { .. }) => ())
+        )
+
+        (
             (let expr = Expr::bin_op(lhs, BinOpKind::Mul, rhs))
             (codegen_expr_into(global, cfn, scope, target, expr) => (code, global, cfn))
             ---- ("multiplication")

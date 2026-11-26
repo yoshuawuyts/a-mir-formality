@@ -111,6 +111,9 @@ pub fn lower_expr(ctx: &mut Context, expr: &Expr) -> Fallible<syntax::Expr> {
             suffix: tys::scalar_to_string(ty),
         }),
         Expr::Parens(expr) => Ok(syntax::Expr::Paren(Box::new(lower_expr(ctx, expr)?))),
+        Expr::EffectClosure { .. } => {
+            anyhow::bail!("Rust lowering does not support effect-annotated closures")
+        }
         Expr::True => Ok(syntax::Expr::Bool(true)),
         Expr::False => Ok(syntax::Expr::Bool(false)),
         Expr::Ref { kind, lt: _, place } => Ok(syntax::Expr::Ref {
@@ -255,7 +258,7 @@ pub fn lower_named_field_expr(
 
 #[cfg(test)]
 mod test {
-    use super::{lower_stmt, Context};
+    use super::{lower_expr, lower_stmt, Context};
     use crate::rust::term;
 
     #[test]
@@ -266,6 +269,17 @@ mod test {
         assert_eq!(
             error.to_string(),
             "Rust lowering does not support `with const` on blocks"
+        );
+    }
+
+    #[test]
+    fn with_const_closure_is_not_lowered() {
+        let error = lower_expr(&mut Context::default(), &term("|| with const {}"))
+            .err()
+            .expect("Rust lowering must reject the closure");
+        assert_eq!(
+            error.to_string(),
+            "Rust lowering does not support effect-annotated closures"
         );
     }
 

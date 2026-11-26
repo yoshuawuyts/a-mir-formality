@@ -1,7 +1,11 @@
 #![allow(non_snake_case)]
 
 use a_mir_formality::{crates, test_program_ok, FormalityTest};
-use formality_rust::grammar::{expr::Stmt, Crates, Fn};
+use formality_core::test_util::format_error_leaves;
+use formality_rust::grammar::{
+    expr::{Expr, Stmt},
+    Crates, Fn,
+};
 use formality_rust::rust::{term, try_term};
 
 #[test]
@@ -148,4 +152,31 @@ fn with_const_block_is_not_executable() {
     assert!(error
         .to_string()
         .contains("MiniRust codegen does not support `with const` on blocks"));
+}
+
+#[test]
+fn with_const_closure_round_trips() {
+    for source in [
+        "|| with const {}",
+        "|value: i32| with const { return value; }",
+    ] {
+        let expr: Expr = term(source);
+        assert!(matches!(expr, Expr::EffectClosure { .. }));
+        assert_eq!(term::<Expr>(&format!("{expr:?}")), expr);
+    }
+    assert!(try_term::<Expr>("|| with Const {}").is_err());
+}
+
+#[test]
+fn with_const_closure_values_are_not_checked_or_executed() {
+    let input = crates![crate Foo { fn main() { return || with const {}; } }];
+    let error = test_program_ok(input).unwrap_err();
+    assert!(format_error_leaves(&error)
+        .contains("effect-annotated closure values are not supported yet"));
+
+    let program: Crates = term(input);
+    let error = formality_rust::codegen::codegen_program(&program).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("MiniRust codegen does not support effect-annotated closures"));
 }

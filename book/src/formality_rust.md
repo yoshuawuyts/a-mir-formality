@@ -20,6 +20,10 @@ Use `with const { ... }` as a nested block statement. The block has its own
 local scope, just like an unannotated block; its annotation does not affect
 the enclosing function. This syntax does not introduce block values.
 
+Closure forms such as `|| with const {}` and
+`|value: i32| with const { return value; }` can be parsed and printed. Closure
+values cannot yet be type-checked or executed.
+
 ## `check/`
 
 The main checking entry point is `check_all_crates`:
