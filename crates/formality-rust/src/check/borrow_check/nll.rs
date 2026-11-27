@@ -297,7 +297,7 @@ judgment_fn! {
             // Nested block statement
             (borrow_check_block(env, assumptions, state, block, places_live_on_exit) => state)
             ------------------------------------------------------------ ("block")
-            (borrow_check_statement(env, assumptions, state, Stmt::Block(block), places_live_on_exit) => (env, state))
+            (borrow_check_statement(env, assumptions, state, Stmt::Block { block, .. }, places_live_on_exit) => (env, state))
         )
 
         (
@@ -396,6 +396,12 @@ judgment_fn! {
             (borrow_check_expr(env, assumptions, state, expr, places_live_on_exit) => (ty, state))
             ---- ("parenthesized")
             (borrow_check_expr(env, assumptions, state, Expr::Parens(expr), places_live_on_exit) => (ty, state))
+        )
+
+        (
+            (fail "closure values are not supported yet")
+            ---- ("closure")
+            (borrow_check_expr(_env, _assumptions, _state, Expr::Closure { .. }, _places_live_on_exit) => ())
         )
 
         (
@@ -516,7 +522,7 @@ judgment_fn! {
             (let Fn { id: _, safety, binder } = env.crates().fn_named(fn_id)?)
             // FIXME: add `unsafe` blocks and only allow calling unsafe functions from there.
             (ProvenSet::singleton((safety, ProofTree::leaf("safety"))) => Safety::Safe)
-            (let FnBoundData { input_args, output_ty, where_clauses, body: _ } =
+            (let FnBoundData { input_args, output_ty, where_clauses, .. } =
                 binder.instantiate_with(parameters)?)
 
             // Check argument count matches

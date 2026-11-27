@@ -3,7 +3,8 @@ use std::sync::Arc;
 use formality_core::{id, term};
 
 use crate::grammar::{
-    AdtId, Binder, FieldName, Lt, Parameter, RefKind, ScalarId, TraitId, Ty, ValueId,
+    AdtId, Binder, EffectList, FieldName, InputArg, Lt, Parameter, RefKind, ScalarId, TraitId, Ty,
+    ValueId,
 };
 
 mod parse_expr;
@@ -129,12 +130,12 @@ pub enum Stmt {
     #[grammar(return $expr ;)]
     Return { expr: Expr },
 
-    /// `{ stmts }`
+    /// `{ stmts }` or `with effects { stmts }`
     ///
     /// A nested block. Creates a new scope; locals declared
     /// inside are dropped when the block exits.
-    #[cast]
-    Block(Block),
+    #[grammar($:with $effects $block)]
+    Block { effects: EffectList, block: Block },
 
     /// `exists<'a, 'b> { stmts }`
     ///
@@ -157,6 +158,13 @@ pub enum Expr {
     #[grammar(($v0))]
     #[reject(Expr::Place(_))]
     Parens(Arc<Expr>),
+
+    #[grammar(| $,params | $:with $effects $body)]
+    Closure {
+        params: Vec<InputArg>,
+        effects: EffectList,
+        body: Block,
+    },
 
     /// `place = expr`
     ///

@@ -220,8 +220,8 @@ judgment_fn! {
             // Merge binders and instantiate universally
             (scope(enter_universally(env, &merge_binders(&ii_fn.binder, &ti_fn.binder)?)
                 => (env, (
-                    FnBoundData { input_args: ii_input_args, output_ty: ii_output_ty, where_clauses: ii_where_clauses, body: _ },
-                    FnBoundData { input_args: ti_input_args, output_ty: ti_output_ty, where_clauses: ti_where_clauses, body: _ },
+                    FnBoundData { input_args: ii_input_args, output_ty: ii_output_ty, where_clauses: ii_where_clauses, .. },
+                    FnBoundData { input_args: ti_input_args, output_ty: ti_output_ty, where_clauses: ti_where_clauses, .. },
                 ))) with()
 
                 // Prove impl where-clauses follow from trait where-clauses

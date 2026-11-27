@@ -204,9 +204,10 @@ judgment_fn! {
         )
 
         (
+            (let () = require_no_effects(effects, "blocks")?)
             (codegen_block(global, cfn, scope, block) => (code, global, cfn))
             ---- ("block")
-            (codegen_stmt(global, cfn, scope, Stmt::Block(block)) => (code, scope, global, cfn))
+            (codegen_stmt(global, cfn, scope, Stmt::Block { effects, block }) => (code, scope, global, cfn))
         )
 
         (
@@ -239,6 +240,12 @@ judgment_fn! {
             (codegen_expr_into(global, cfn, scope, target, expr) => (code, global, cfn))
             ---- ("parenthesized")
             (codegen_expr_into(global, cfn, scope, target, Expr::Parens(expr)) => (code, global, cfn))
+        )
+
+        (
+            (fail "MiniRust codegen does not support closures")
+            ---- ("closure")
+            (codegen_expr_into(_global, _cfn, _scope, _target, Expr::Closure { .. }) => ())
         )
 
         (

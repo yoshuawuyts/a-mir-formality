@@ -1,6 +1,12 @@
 #![allow(non_snake_case)]
 
-use a_mir_formality::{crates, FormalityTest};
+use a_mir_formality::{crates, test_program_ok, FormalityTest};
+use formality_core::test_util::format_error_leaves;
+use formality_rust::grammar::{
+    expr::{Expr, Stmt},
+    Crates, EffectList, Fn,
+};
+use formality_rust::rust::{term, try_term};
 
 #[test]
 fn ok() {
@@ -68,4 +74,149 @@ fn omitted_return_type_executes() {
     }])
     .expect_output("42\n")
     .ok()
+}
+
+#[test]
+fn with_const_function_checks_its_body_normally() {
+    let _ = test_program_ok(crates![crate Foo {
+        trait Bound {}
+
+        fn ordinary() {}
+
+        fn annotate() with const {
+            ordinary();
+            with();
+        }
+
+        fn annotate_generic<T>(value: T) -> T where T: Bound with const {
+            return value;
+        }
+
+        fn with() {}
+    }])
+    .unwrap();
+}
+
+#[test]
+fn with_const_function_round_trips() {
+    let function: Fn = term("fn answer() -> i32 with const { trusted }");
+    assert_eq!(function.binder.peek().effects, term("const"));
+    assert_eq!(term::<Fn>(&format!("{function:?}")), function);
+
+    let plain: Fn = term("fn answer() -> i32 { trusted }");
+    assert!(plain.binder.peek().effects.is_empty());
+    assert_eq!(term::<Fn>(&format!("{plain:?}")), plain);
+}
+
+#[test]
+fn function_with_clause_follows_where_clause() {
+    let function: Fn = term("fn f() -> i32 where i32: Bound with const { trusted }");
+    let signature = function.binder.peek();
+    assert_eq!(signature.where_clauses.len(), 1);
+    assert_eq!(signature.effects, term("const"));
+
+    let printed = format!("{function:?}");
+    let (before_with, _) = printed.split_once(" with const").unwrap();
+    assert!(before_with.contains(" where "), "{printed}");
+    assert_eq!(term::<Fn>(&printed), function);
+
+    assert!(try_term::<Fn>("fn f() -> i32 with const where i32: Bound { trusted }").is_err());
+}
+
+#[test]
+fn with_const_function_rejects_invalid_clauses() {
+    for source in [
+        "fn f() with {}",
+        "fn f() with Const {}",
+        "fn f() with other {}",
+        "fn f() with const + const {}",
+    ] {
+        assert!(try_term::<Fn>(source).is_err(), "accepted {source}");
+    }
+}
+
+#[test]
+fn with_const_function_is_not_executable() {
+    let program: Crates = term(crates![crate Foo { fn main() with const {} }]);
+    let minirust_error = formality_rust::codegen::codegen_program(&program).unwrap_err();
+    assert!(minirust_error
+        .to_string()
+        .contains("MiniRust codegen does not support `with const` on functions"));
+}
+
+#[test]
+fn with_const_block_checks_its_body_in_a_nested_scope() {
+    let _ = test_program_ok(crates![crate Foo {
+        fn main() -> i32 {
+            let value: i32;
+            with const {
+                value = 1_i32;
+                let value: bool = true;
+            }
+            return value;
+        }
+    }])
+    .unwrap();
+}
+
+#[test]
+fn blocks_round_trip_with_or_without_effects() {
+    for (source, expected) in [
+        ("{ prepare(); }", EffectList::default()),
+        ("with const { prepare(); }", term("const")),
+    ] {
+        let statement: Stmt = term(source);
+        let Stmt::Block { effects, .. } = &statement else {
+            panic!("expected a block: {statement:?}");
+        };
+        assert_eq!(effects, &expected);
+        assert_eq!(term::<Stmt>(&format!("{statement:?}")), statement);
+    }
+    assert!(try_term::<Stmt>("with {}").is_err());
+    assert!(try_term::<Stmt>("with Const {}").is_err());
+}
+
+#[test]
+fn with_const_block_is_not_executable() {
+    let program: Crates = term(crates![crate Foo { fn main() { with const {} } }]);
+    let error = formality_rust::codegen::codegen_program(&program).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("MiniRust codegen does not support `with const` on blocks"));
+}
+
+#[test]
+fn closures_round_trip_with_or_without_effects() {
+    for (source, expected) in [
+        ("|| {}", EffectList::default()),
+        ("|| with const {}", term("const")),
+        ("|value: i32| { return value; }", EffectList::default()),
+        ("|value: i32| with const { return value; }", term("const")),
+    ] {
+        let expr: Expr = term(source);
+        let Expr::Closure { effects, .. } = &expr else {
+            panic!("expected a closure: {expr:?}");
+        };
+        assert_eq!(effects, &expected);
+        assert_eq!(term::<Expr>(&format!("{expr:?}")), expr);
+    }
+    assert!(try_term::<Expr>("|| with {}").is_err());
+    assert!(try_term::<Expr>("|| with Const {}").is_err());
+}
+
+#[test]
+fn closure_values_are_not_checked_or_executed() {
+    for input in [
+        crates![crate Foo { fn main() { return || {}; } }],
+        crates![crate Foo { fn main() { return || with const {}; } }],
+    ] {
+        let error = test_program_ok(input).unwrap_err();
+        assert!(format_error_leaves(&error).contains("closure values are not supported yet"));
+
+        let program: Crates = term(input);
+        let error = formality_rust::codegen::codegen_program(&program).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("MiniRust codegen does not support closures"));
+    }
 }
