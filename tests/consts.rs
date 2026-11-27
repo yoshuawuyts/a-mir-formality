@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
-use a_mir_formality::{crates, FormalityTest};
+use a_mir_formality::{crates, test_program_ok, FormalityTest};
+use formality_core::test_util::format_error_leaves;
 
 #[test]
 fn nonsense_rigid_const_bound() {
@@ -182,6 +183,24 @@ fn const_block_with_ill_typed_initializer_is_rejected() {
         "{} => { @wf({ let x: u32 = true; }) }",
     )
     .is_proven());
+}
+
+#[test]
+fn const_arguments_do_not_inherit_the_unwind_effect() {
+    let error = test_program_ok(crates![crate Foo {
+        #![feature(adt_const_params)]
+        fn may_unwind() with unwind { trusted }
+        fn takes_const<const C>() where type_of_const C is () {}
+        fn wrapper() with unwind {
+            takes_const::<{ may_unwind(); }>();
+        }
+    }])
+    .unwrap_err();
+    let diagnostic = format_error_leaves(&error);
+    assert!(
+        diagnostic.contains("call to `may_unwind` requires the `unwind` effect"),
+        "{diagnostic}"
+    );
 }
 
 #[test]

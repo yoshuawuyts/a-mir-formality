@@ -4,7 +4,7 @@ use crate::check::borrow_check::outlives::{transitively_outlived_by, verify_univ
 use crate::check::borrow_check::typed_place_expression::{
     TypedPlaceExpr, TypedPlaceExpressionData,
 };
-use crate::check::{check_effect_list, feature_gate_enabled_in_program};
+use crate::check::{check_effect_list, feature_gate_enabled_in_program, requires_unwind};
 
 use crate::grammar::expr::{BinOpKind, Block, Expr, Init, Literal, PlaceExpr, Stmt};
 use crate::grammar::{
@@ -12,7 +12,7 @@ use crate::grammar::{
     Parameter, Predicates, RefKind, RigidName, RigidTy, ScalarId, Struct, StructBoundData, TraitId,
     TraitRef, Ty, ValueId, Variable, VariantId, WhereClause,
 };
-use crate::grammar::{FnBoundData, PredicateTy};
+use crate::grammar::{EffectList, Fallible, FnBoundData, PredicateTy};
 use crate::prove::{with_variables, Safety};
 use formality_core::judgment::ProofTree;
 use formality_core::{judgment_fn, term, ProvenSet, Set, Union, Upcast};
@@ -521,11 +521,12 @@ judgment_fn! {
             (prove_ty_is_rigid(env, assumptions, state, callee_ty) => (RigidTy { name: RigidName::FnDef(fn_id), parameters }, state))
 
             // Find the function declaration and instantiate it
-            (let Fn { id: _, safety, binder } = env.crates().fn_named(fn_id)?)
+            (let (crate_index, Fn { id: _, safety, binder }) = env.crates().fn_named_with_crate_index(fn_id)?)
             // FIXME: add `unsafe` blocks and only allow calling unsafe functions from there.
             (ProvenSet::singleton((safety, ProofTree::leaf("safety"))) => Safety::Safe)
-            (let FnBoundData { input_args, output_ty, where_clauses, .. } =
+            (let FnBoundData { input_args, output_ty, effects, where_clauses, .. } =
                 binder.instantiate_with(parameters)?)
+            (let () = check_call_unwind(env, fn_id, *crate_index, effects)?)
 
             // Check argument count matches
             (if input_args.len() == args.len())
@@ -667,6 +668,18 @@ judgment_fn! {
             (borrow_check_expr(env, assumptions, state, Expr::Struct { adt_id, turbofish, field_exprs }, places_live_on_exit) => (ty, state))
         )
     }
+}
+
+fn check_call_unwind(
+    env: &TypeckEnv,
+    fn_id: &ValueId,
+    crate_index: usize,
+    effects: &EffectList,
+) -> Fallible<()> {
+    if requires_unwind(env.crates(), effects, crate_index + 1)? && !env.allows_unwind {
+        anyhow::bail!("call to `{fn_id:?}` requires the `unwind` effect");
+    }
+    Ok(())
 }
 
 judgment_fn! {

@@ -2,7 +2,7 @@ use crate::check::borrow_check::env::TypeckEnv;
 use crate::check::borrow_check::flow_state::FlowState;
 use crate::check::borrow_check::nll::borrow_check;
 use crate::check::where_clauses::prove_where_clauses_well_formed;
-use crate::check::{check_effect_list, prove_goal};
+use crate::check::{prove_goal, requires_unwind};
 use crate::grammar::{AtomicPredicate, CrateId, FnBody, MaybeFnBody, Predicates};
 use crate::prove::{enter_universally, Env, Program};
 use crate::{
@@ -46,13 +46,14 @@ judgment_fn! {
 
         (
             (scope(enter_universally(env, &f.binder) => (env, FnBoundData { input_args, output_ty, effects, where_clauses, body })) with()
-                (let () = check_effect_list(program.program(), effects)?)
+                // The program prefix ends at the crate that defines this function.
+                (let allows_unwind = requires_unwind(program.program(), effects, program.program().len())?)
                 (let assumptions: Predicates = (assumptions, where_clauses).to_predicates())
                 (prove_where_clauses_well_formed(program, env, assumptions, where_clauses) => ())
                 (for_all(input_arg in input_args)
                     (prove_goal(program, env, assumptions, AtomicPredicate::well_formed(&input_arg.ty)) => ()))
                 (prove_goal(program, env, assumptions, AtomicPredicate::well_formed(output_ty)) => ())
-                (check_fn_body(program, env, assumptions, body, input_args, output_ty) => ()))
+                (check_fn_body(program, env, assumptions, body, input_args, output_ty, allows_unwind) => ()))
             ------------------------------------------------------------ ("check fn")
             (check_fn(program, env, assumptions, f, crate_id) => ())
         )
@@ -68,28 +69,29 @@ judgment_fn! {
         body: MaybeFnBody,
         input_args: Vec<crate::grammar::InputArg>,
         output_ty: crate::grammar::Ty,
+        allows_unwind: bool,
     ) => () {
         debug(body, assumptions, env, program)
 
         (
             // No fn body occurs in trait definitions only.
             ------------------------------------------------------------ ("no fn body")
-            (check_fn_body(program, env, assumptions, MaybeFnBody::NoFnBody, input_args, output_ty) => ())
+            (check_fn_body(program, env, assumptions, MaybeFnBody::NoFnBody, input_args, output_ty, _allows_unwind) => ())
         )
 
         (
             // A trusted function body is assumed to be valid.
             ------------------------------------------------------------ ("trusted fn body")
-            (check_fn_body(program, env, assumptions, MaybeFnBody::FnBody(FnBody::TrustedFnBody), input_args, output_ty) => ())
+            (check_fn_body(program, env, assumptions, MaybeFnBody::FnBody(FnBody::TrustedFnBody), input_args, output_ty, _allows_unwind) => ())
         )
 
         (
             // Type-check an expression body via the borrow checker.
-            (let typeck_env = TypeckEnv::for_fn_body(env, program, output_ty))
+            (let typeck_env = TypeckEnv::for_fn_body(env, program, output_ty, *allows_unwind))
             (let initial_state = FlowState::for_fn_body(env, input_args)?)
             (borrow_check(typeck_env, assumptions, initial_state, block) => ())
             ------------------------------------------------------------ ("expr fn body")
-            (check_fn_body(program, env, assumptions, MaybeFnBody::FnBody(FnBody::Expr(block)), input_args, output_ty) => ())
+            (check_fn_body(program, env, assumptions, MaybeFnBody::FnBody(FnBody::Expr(block)), input_args, output_ty, allows_unwind) => ())
         )
     }
 }

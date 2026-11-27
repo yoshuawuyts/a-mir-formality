@@ -32,45 +32,68 @@ impl Crates {
         self.crates.iter().flat_map(|c| &c.items)
     }
 
+    fn items_with_crate_index(&self) -> impl Iterator<Item = (usize, &CrateItem)> {
+        self.crates
+            .iter()
+            .enumerate()
+            .flat_map(|(i, c)| c.items.iter().map(move |item| (i, item)))
+    }
+
     pub fn fn_named(&self, fn_id: &ValueId) -> Fallible<&Fn> {
-        let mut fns: Vec<&Fn> = self
-            .items_from_all_crates()
-            .filter_map(|crate_item| match crate_item {
-                CrateItem::Fn(t) if t.id == *fn_id => Some(t),
+        self.fn_named_with_crate_index(fn_id).map(|(_, f)| f)
+    }
+
+    pub(crate) fn fn_named_with_crate_index(&self, fn_id: &ValueId) -> Fallible<(usize, &Fn)> {
+        let mut fns = self
+            .items_with_crate_index()
+            .filter_map(|(i, item)| match item {
+                CrateItem::Fn(f) if f.id == *fn_id => Some((i, f)),
                 _ => None,
-            })
-            .collect();
-        if fns.is_empty() {
-            anyhow::bail!("no fn named `{fn_id:?}`")
-        } else if fns.len() > 1 {
-            anyhow::bail!("multiple fn named `{fn_id:?}`")
-        } else {
-            Ok(fns.pop().unwrap())
+            });
+        let Some(decl) = fns.next() else {
+            anyhow::bail!("no fn named `{fn_id:?}`");
+        };
+        if fns.next().is_some() {
+            anyhow::bail!("multiple fn named `{fn_id:?}`");
         }
+        Ok(decl)
     }
 
     pub fn trait_named(&self, trait_id: &TraitId) -> Fallible<&Trait> {
-        let mut traits: Vec<&Trait> = self
-            .items_from_all_crates()
-            .filter_map(|crate_item| match crate_item {
-                CrateItem::Trait(t) if t.id == *trait_id => Some(t),
-                _ => None,
-            })
-            .collect();
-        if traits.is_empty() {
-            anyhow::bail!("no trait named `{trait_id:?}`")
-        } else if traits.len() > 1 {
-            anyhow::bail!("multiple traits named `{trait_id:?}`")
-        } else {
-            Ok(traits.pop().unwrap())
-        }
+        self.trait_named_with_crate_index(trait_id).map(|(_, t)| t)
     }
 
-    pub(crate) fn effect_alias_named(&self, id: &EffectAliasId) -> Fallible<&EffectAlias> {
-        let mut aliases = self.items_from_all_crates().filter_map(|item| match item {
-            CrateItem::EffectAlias(alias) if alias.id.as_alias() == Some(id) => Some(alias),
-            _ => None,
-        });
+    pub(crate) fn trait_named_with_crate_index(
+        &self,
+        trait_id: &TraitId,
+    ) -> Fallible<(usize, &Trait)> {
+        let mut traits = self
+            .items_with_crate_index()
+            .filter_map(|(i, item)| match item {
+                CrateItem::Trait(t) if t.id == *trait_id => Some((i, t)),
+                _ => None,
+            });
+        let Some(decl) = traits.next() else {
+            anyhow::bail!("no trait named `{trait_id:?}`");
+        };
+        if traits.next().is_some() {
+            anyhow::bail!("multiple traits named `{trait_id:?}`");
+        }
+        Ok(decl)
+    }
+
+    pub(crate) fn effect_alias_named(
+        &self,
+        id: &EffectAliasId,
+        visible_crate_count: usize,
+    ) -> Fallible<&EffectAlias> {
+        let mut aliases = self.crates[..visible_crate_count]
+            .iter()
+            .flat_map(|c| &c.items)
+            .filter_map(|item| match item {
+                CrateItem::EffectAlias(alias) if alias.id.as_alias() == Some(id) => Some(alias),
+                _ => None,
+            });
         let Some(alias) = aliases.next() else {
             anyhow::bail!("unknown effect alias `{id:?}`");
         };

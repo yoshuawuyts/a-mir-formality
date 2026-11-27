@@ -23,16 +23,23 @@ pub struct TypeckEnv {
     /// The declared return type from the function signature.
     pub output_ty: Option<Ty>,
 
+    /// Whether the enclosing function signature permits calls that may unwind.
+    pub allows_unwind: bool,
+
     pub program: Program,
 }
 
 // We want to skip printing the program in the debug output because it is often large and doesn't change.
 impl std::fmt::Debug for TypeckEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TypeckEnv")
+        let mut debug = f.debug_struct("TypeckEnv");
+        debug
             .field("env", &self.env)
-            .field("output_ty", &self.output_ty)
-            .finish()
+            .field("output_ty", &self.output_ty);
+        if self.allows_unwind {
+            debug.field("allows_unwind", &self.allows_unwind);
+        }
+        debug.finish()
     }
 }
 
@@ -47,14 +54,21 @@ impl TypeckEnv {
         Self {
             env: env.upcast(),
             output_ty: None,
+            allows_unwind: false,
             program: decls.clone(),
         }
     }
 
-    pub(crate) fn for_fn_body(env: impl Upcast<Env>, decls: &Program, output_ty: &Ty) -> Self {
+    pub(crate) fn for_fn_body(
+        env: impl Upcast<Env>,
+        decls: &Program,
+        output_ty: &Ty,
+        allows_unwind: bool,
+    ) -> Self {
         Self {
             env: env.upcast(),
             output_ty: Some(output_ty.clone()),
+            allows_unwind,
             program: decls.clone(),
         }
     }

@@ -151,7 +151,7 @@ impl CodegenFn {
             crates: Arc::new(crates.clone()),
             max_size: Program::DEFAULT_MAX_SIZE,
         };
-        let typeck_env = TypeckEnv::for_fn_body(Env::default(), &program, output_ty);
+        let typeck_env = TypeckEnv::for_fn_body(Env::default(), &program, output_ty, false);
         CodegenFn {
             crates: crates.clone(),
             typeck_env,

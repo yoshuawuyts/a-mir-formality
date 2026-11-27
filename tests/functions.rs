@@ -102,6 +102,63 @@ fn with_effects_function_checks_its_body_normally() {
 }
 
 #[test]
+fn unwind_calls_require_a_signature_effect() {
+    let _ = test_program_ok(crates![crate Foo {
+        fn ordinary() with const + async {}
+        fn may_unwind() with async + unwind + const { trusted }
+
+        fn plain() { ordinary(); }
+        fn wrapper() with const + unwind { may_unwind(); }
+    }])
+    .unwrap();
+
+    for input in [
+        crates![crate Foo {
+            fn may_unwind() with async + unwind + const { trusted }
+            fn wrapper() { may_unwind(); }
+        }],
+        crates![crate Foo {
+            fn may_unwind() with unwind { trusted }
+            fn wrapper() with async { may_unwind(); }
+        }],
+        crates![crate Foo {
+            fn may_unwind() with unwind { trusted }
+            fn wrapper() { with unwind { may_unwind(); } }
+        }],
+    ] {
+        assert_unwind_call_rejected(input, "may_unwind");
+    }
+}
+
+#[test]
+fn unwind_checks_generic_calls_but_not_function_item_references() {
+    let _ = test_program_ok(crates![crate Foo {
+        fn may_unwind<T>(value: T) -> T with unwind { return value; }
+
+        fn reference_only() { may_unwind::<u32>; }
+        fn wrapper() with unwind { (may_unwind::<u32>)(1_u32); }
+    }])
+    .unwrap();
+
+    assert_unwind_call_rejected(
+        crates![crate Foo {
+            fn may_unwind<T>(value: T) -> T with unwind { return value; }
+            fn wrapper() { (may_unwind::<u32>)(1_u32); }
+        }],
+        "may_unwind",
+    );
+}
+
+fn assert_unwind_call_rejected(input: &str, callee: &str) {
+    let error = test_program_ok(input).unwrap_err();
+    let diagnostic = format_error_leaves(&error);
+    assert!(
+        diagnostic.contains(&format!("call to `{callee}` requires the `unwind` effect")),
+        "{input}\n{diagnostic}"
+    );
+}
+
+#[test]
 fn with_const_function_round_trips() {
     let function: Fn = term("fn answer() -> i32 with const { trusted }");
     assert_eq!(function.binder.peek().effects, term("const"));
@@ -335,6 +392,43 @@ fn with_effect_aliases_resolve_locally_and_in_dependencies() {
         }
     ])
     .unwrap();
+}
+
+#[test]
+fn unwind_calls_resolve_aliases_in_the_signature_crates() {
+    let _ = test_program_ok(crates![
+        crate Effects {
+            eff reporting = async + unwind;
+        },
+        crate Dep {
+            eff background = async;
+            fn report() with reporting {}
+            fn run() with background {}
+        },
+        crate App {
+            eff reporting = async;
+            eff background = unwind;
+            eff handling = const + unwind;
+            fn wrapper() with handling { report(); }
+            fn plain() { run(); }
+        }
+    ])
+    .unwrap();
+
+    assert_unwind_call_rejected(
+        crates![
+            crate Dep {
+                eff reporting = async + unwind;
+                fn report() with reporting {}
+            },
+            crate App {
+                eff reporting = async;
+                eff background = async;
+                fn wrapper() with background { report(); }
+            }
+        ],
+        "report",
+    );
 }
 
 #[test]

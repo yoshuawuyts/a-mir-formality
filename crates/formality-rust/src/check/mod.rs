@@ -6,8 +6,8 @@ use crate::prove::{enter_universally, is_definitely_not_proveable, Constraints, 
 use crate::rust::Visit;
 use crate::{
     grammar::{
-        Crate, CrateId, CrateItem, Crates, EffectList, EffectName, Fallible, FeatureGateName,
-        Predicates, Test, TestBoundData,
+        BuiltinEffect, Crate, CrateId, CrateItem, Crates, EffectList, EffectName, Fallible,
+        FeatureGateName, Predicates, Test, TestBoundData,
     },
     prove::ToPredicates,
 };
@@ -245,10 +245,21 @@ judgment_fn! {
 }
 
 fn check_effect_list(crates: &Crates, effects: &EffectList) -> Fallible<()> {
-    if let Some(id) = effects.alias_id() {
-        crates.effect_alias_named(id)?;
-    }
-    Ok(())
+    requires_unwind(crates, effects, crates.len()).map(|_| ())
+}
+
+fn requires_unwind(
+    crates: &Crates,
+    effects: &EffectList,
+    visible_crate_count: usize,
+) -> Fallible<bool> {
+    Ok(match effects.alias_id() {
+        Some(id) => crates
+            .effect_alias_named(id, visible_crate_count)?
+            .effects
+            .contains(&BuiltinEffect::Unwind),
+        None => effects.contains_builtin(BuiltinEffect::Unwind),
+    })
 }
 
 fn check_test(program: &Program, test: &Test) -> Fallible<ProofTree> {

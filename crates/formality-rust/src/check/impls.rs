@@ -1,10 +1,11 @@
 use anyhow::bail;
 use formality_core::Set;
 
+use crate::check::requires_unwind;
 use crate::grammar::{
     AdtBoundData, AdtId, AssociatedTy, AssociatedTyBoundData, AssociatedTyValue,
-    AssociatedTyValueBoundData, AtomicPredicate, Binder, CrateId, Fallible, Fn, FnBoundData,
-    ImplItem, MaybeFnBody, NegTraitImpl, NegTraitImplBoundData, Predicates, RigidName,
+    AssociatedTyValueBoundData, AtomicPredicate, Binder, CrateId, Crates, Fallible, Fn,
+    FnBoundData, ImplItem, MaybeFnBody, NegTraitImpl, NegTraitImplBoundData, Predicates, RigidName,
     Substitution, Trait, TraitBoundData, TraitId, TraitImpl, TraitImplBoundData, TraitItem, Ty,
 };
 use crate::prove::{enter_universally, with_variables, Env, Program, Safety};
@@ -28,13 +29,13 @@ judgment_fn! {
                 (super::prove_goal(program, env, where_clauses, AtomicPredicate::is_implemented(trait_ref)) => ())
                 (super::prove_not_goal(program, env, where_clauses, AtomicPredicate::not_implemented(trait_ref)) => ())
 
-                (let trait_decl = program.program().trait_named(&trait_ref.trait_id)?)
+                (let (trait_crate_index, trait_decl) = program.program().trait_named_with_crate_index(&trait_ref.trait_id)?)
                 (let TraitBoundData { where_clauses: _, trait_items } = trait_decl.binder.instantiate_with(&trait_ref.parameters)?)
                 (check_safety_matches(&trait_decl, &trait_impl) => ())
 
                 (check_duplicate_impl_items(impl_items) => ())
                 (for_all(impl_item in impl_items)
-                    (check_trait_impl_item(program, env, where_clauses, trait_items, impl_item, crate_id) => ()))
+                    (check_trait_impl_item(program, env, where_clauses, trait_items, impl_item, crate_id, trait_crate_index) => ()))
 
                 (check_all_required_items_present(trait_items, impl_items) => ()))
 
@@ -180,19 +181,20 @@ judgment_fn! {
         trait_items: Vec<TraitItem>,
         impl_item: ImplItem,
         crate_id: CrateId,
+        trait_crate_index: usize,
     ) => () {
         debug(program, env, assumptions, impl_item, crate_id)
 
         (
-            (check_fn_in_impl(program, env, assumptions, trait_items, v, crate_id) => ())
+            (check_fn_in_impl(program, env, assumptions, trait_items, v, crate_id, trait_crate_index) => ())
             ---- ("fn in impl")
-            (check_trait_impl_item(program, env, assumptions, trait_items, ImplItem::Fn(v), crate_id) => ())
+            (check_trait_impl_item(program, env, assumptions, trait_items, ImplItem::Fn(v), crate_id, trait_crate_index) => ())
         )
 
         (
             (check_associated_ty_value(program, env, assumptions, trait_items, v) => ())
             ---- ("associated ty value")
-            (check_trait_impl_item(program, env, assumptions, trait_items, ImplItem::AssociatedTyValue(v), crate_id) => ())
+            (check_trait_impl_item(program, env, assumptions, trait_items, ImplItem::AssociatedTyValue(v), crate_id, _trait_crate_index) => ())
         )
     }
 }
@@ -205,6 +207,7 @@ judgment_fn! {
         trait_items: Vec<TraitItem>,
         ii_fn: Fn,
         crate_id: CrateId,
+        trait_crate_index: usize,
     ) => () {
         debug(program, env, impl_assumptions, ii_fn, crate_id)
         (
@@ -216,6 +219,7 @@ judgment_fn! {
 
             // Check the fn itself
             (super::fns::check_fn(program, env, impl_assumptions, ii_fn, crate_id) => ())
+            (let () = check_impl_method_unwind(program.program(), *trait_crate_index, ti_fn, ii_fn)?)
 
             // Merge binders and instantiate universally
             (scope(enter_universally(env, &merge_binders(&ii_fn.binder, &ti_fn.binder)?)
@@ -239,9 +243,30 @@ judgment_fn! {
                 (super::prove_goal(program, env, (impl_assumptions, ii_where_clauses), AtomicPredicate::sub(ii_output_ty, ti_output_ty)) => ()))
 
             ---- ("check_fn_in_impl")
-            (check_fn_in_impl(program, env, impl_assumptions, trait_items, ii_fn, crate_id) => ())
+            (check_fn_in_impl(program, env, impl_assumptions, trait_items, ii_fn, crate_id, trait_crate_index) => ())
         )
     }
+}
+
+fn check_impl_method_unwind(
+    crates: &Crates,
+    trait_crate_index: usize,
+    trait_method: &Fn,
+    impl_method: &Fn,
+) -> Fallible<()> {
+    let trait_unwind = requires_unwind(
+        crates,
+        &trait_method.binder.peek().effects,
+        trait_crate_index + 1,
+    )?;
+    let impl_unwind = requires_unwind(crates, &impl_method.binder.peek().effects, crates.len())?;
+    if impl_unwind && !trait_unwind {
+        bail!(
+            "impl method `{:?}` requires the `unwind` effect, but the trait method does not",
+            impl_method.id
+        );
+    }
+    Ok(())
 }
 
 judgment_fn! {
