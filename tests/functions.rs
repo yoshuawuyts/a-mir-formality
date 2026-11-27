@@ -278,7 +278,7 @@ fn closure_values_are_not_checked_or_executed() {
 #[test]
 fn with_effect_aliases_round_trip() {
     let program: Crates = term(crates![crate Foo {
-        eff reporting = async + panic;
+        eff reporting = async + unwind;
 
         fn report() with reporting {
             with reporting {}
@@ -287,7 +287,7 @@ fn with_effect_aliases_round_trip() {
     }]);
     let printed = format!("{program:?}");
     assert!(
-        printed.contains("eff reporting = async + panic"),
+        printed.contains("eff reporting = async + unwind"),
         "{printed}"
     );
     assert_eq!(printed.matches("with reporting").count(), 3, "{printed}");
@@ -298,7 +298,7 @@ fn with_effect_aliases_round_trip() {
 fn with_effect_aliases_resolve_locally_and_in_dependencies() {
     let _ = test_program_ok(crates![
         crate Dep {
-            eff reporting = async + panic;
+            eff reporting = async + unwind;
         },
         crate App {
             trait Report {
@@ -317,11 +317,11 @@ fn with_effect_aliases_resolve_locally_and_in_dependencies() {
             fn with() {}
             fn eff() {}
             fn async() with async {}
-            fn panic() with panic {}
+            fn unwind() with unwind {}
 
             fn main() -> i32 with async_report {
                 async();
-                panic();
+                unwind();
                 let value: i32;
                 with eff {
                     value = 1_i32;
@@ -331,7 +331,7 @@ fn with_effect_aliases_resolve_locally_and_in_dependencies() {
             }
 
             eff eff = const;
-            eff async_report = async + panic;
+            eff async_report = async + unwind;
         }
     ])
     .unwrap();
@@ -339,6 +339,15 @@ fn with_effect_aliases_resolve_locally_and_in_dependencies() {
 
 #[test]
 fn with_effect_aliases_reject_unknown_names() {
+    let check = |input: &str, name: &str| {
+        let error = test_program_ok(input).unwrap_err();
+        let diagnostic = format_error_leaves(&error);
+        assert!(
+            diagnostic.contains(&format!("unknown effect alias `{name}`")),
+            "{input}\n{diagnostic}"
+        );
+    };
+
     for input in [
         crates![crate Foo { fn missing() {} fn main() with missing {} }],
         crates![crate Foo { trait Report { fn report() with missing; } }],
@@ -353,27 +362,23 @@ fn with_effect_aliases_reject_unknown_names() {
             crate Later { eff missing = const; }
         ],
     ] {
-        let error = test_program_ok(input).unwrap_err();
-        let diagnostic = format_error_leaves(&error);
-        assert!(
-            diagnostic.contains("unknown effect alias `missing`"),
-            "{input}\n{diagnostic}"
-        );
+        check(input, "missing");
     }
+    check(crates![crate Foo { fn main() with panic {} }], "panic");
 }
 
 #[test]
 fn with_effect_aliases_require_a_unique_visible_definition() {
     let _ = test_program_ok(crates![
         crate Early { eff reporting = async; fn early() with reporting {} },
-        crate Later { eff reporting = panic; }
+        crate Later { eff reporting = unwind; }
     ])
     .unwrap();
 
     for input in [
         crates![
             crate Early { eff reporting = async; },
-            crate Later { eff reporting = panic; fn later() with reporting {} }
+            crate Later { eff reporting = unwind; fn later() with reporting {} }
         ],
         crates![
             crate Early { eff reporting = async; },
@@ -404,7 +409,7 @@ fn with_effect_aliases_reject_duplicate_or_reserved_declarations() {
         "{diagnostic}"
     );
 
-    for builtin in ["const", "async", "panic"] {
+    for builtin in ["const", "async", "unwind"] {
         let error =
             test_program_ok(&format!("[crate Foo {{ eff {builtin} = const; }}]")).unwrap_err();
         let diagnostic = format_error_leaves(&error);
@@ -422,6 +427,7 @@ fn with_effect_aliases_reject_invalid_declarations() {
     for input in [
         "eff reporting = ;",
         "eff reporting = logging;",
+        "eff reporting = panic;",
         "eff reporting = async + logging;",
         "eff reporting = const",
         "eff Reporting = const;",
@@ -440,7 +446,7 @@ fn with_effect_aliases_reject_invalid_declarations() {
 #[test]
 fn with_effect_aliases_do_not_enable_closure_values() {
     let error = test_program_ok(crates![
-        crate Dep { eff reporting = panic; },
+        crate Dep { eff reporting = unwind; },
         crate App { fn main() { return || with reporting {}; } }
     ])
     .unwrap_err();
