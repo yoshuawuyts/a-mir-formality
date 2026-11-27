@@ -264,8 +264,7 @@ mod test {
     #[test]
     fn with_const_block_is_not_lowered() {
         let error = lower_stmt(&mut Context::default(), &term("with const {}"))
-            .err()
-            .expect("Rust lowering must reject the annotation");
+            .expect_err("Rust lowering must reject the annotation");
         assert_eq!(
             error.to_string(),
             "Rust lowering does not support `with const` on blocks"
@@ -275,8 +274,7 @@ mod test {
     #[test]
     fn with_const_closure_is_not_lowered() {
         let error = lower_expr(&mut Context::default(), &term("|| with const {}"))
-            .err()
-            .expect("Rust lowering must reject the closure");
+            .expect_err("Rust lowering must reject the closure");
         assert_eq!(
             error.to_string(),
             "Rust lowering does not support effect-annotated closures"

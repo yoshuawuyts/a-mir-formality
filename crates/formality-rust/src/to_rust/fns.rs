@@ -79,8 +79,7 @@ mod test {
             &function,
             syntax::Visibility::Public,
         )
-        .err()
-        .expect("Rust lowering must reject the annotation");
+        .expect_err("Rust lowering must reject the annotation");
         assert_eq!(
             error.to_string(),
             "Rust lowering does not support `with const` on functions"
