@@ -83,16 +83,16 @@ fn with_effects_function_checks_its_body_normally() {
 
         fn ordinary() {}
         fn async() {}
-        fn panic() {}
+        fn unwind() {}
 
         fn annotate() with const {
             ordinary();
             with();
             async();
-            panic();
+            unwind();
         }
 
-        fn annotate_generic<T>(value: T) -> T where T: Bound with panic + const + async {
+        fn annotate_generic<T>(value: T) -> T where T: Bound with unwind + const + async {
             return value;
         }
 
@@ -129,10 +129,10 @@ fn function_with_clause_follows_where_clause() {
 
 #[test]
 fn with_effects_function_round_trips_in_source_order() {
-    let function: Fn = term("fn answer() -> i32 with panic+const + async { trusted }");
-    assert_eq!(function.binder.peek().effects, term("panic + const+async"));
+    let function: Fn = term("fn answer() -> i32 with unwind+const + async { trusted }");
+    assert_eq!(function.binder.peek().effects, term("unwind + const+async"));
     let printed = format!("{function:?}");
-    assert!(printed.contains("with panic + const + async"), "{printed}");
+    assert!(printed.contains("with unwind + const + async"), "{printed}");
     assert_eq!(term::<Fn>(&printed), function);
 }
 
@@ -143,7 +143,9 @@ fn with_effects_rejects_invalid_clauses() {
         "Const",
         "const + Async",
         "other",
-        "panic + other",
+        "unwind + other",
+        "panic",
+        "const + panic",
         "+ const",
         "const +",
         "const ++ async",
@@ -164,8 +166,8 @@ fn with_effects_rejects_invalid_clauses() {
 fn with_effects_reports_duplicate_names() {
     for (list, duplicate) in [
         ("const + const", "const"),
-        ("const + panic + const", "const"),
-        ("const + panic + panic", "panic"),
+        ("const + unwind + const", "const"),
+        ("const + unwind + unwind", "unwind"),
     ] {
         let block = format!("with {list} {{}}");
         let function = format!("fn f() {block}");
@@ -197,7 +199,7 @@ fn with_effects_block_checks_its_body_in_a_nested_scope() {
     let _ = test_program_ok(crates![crate Foo {
         fn main() -> i32 {
             let value: i32;
-            with async + panic {
+            with async + unwind {
                 value = 1_i32;
                 let value: bool = true;
             }
@@ -213,7 +215,7 @@ fn blocks_round_trip_with_or_without_effects() {
         ("{ prepare(); }", EffectList::default()),
         ("with const { prepare(); }", term("const")),
         ("with async {}", term("async")),
-        ("with async + panic { prepare(); }", term("async + panic")),
+        ("with async + unwind { prepare(); }", term("async + unwind")),
     ] {
         let statement: Stmt = term(source);
         let Stmt::Block { effects, .. } = &statement else {
@@ -238,7 +240,7 @@ fn closures_round_trip_with_or_without_effects() {
     for (source, expected) in [
         ("|| {}", EffectList::default()),
         ("|| with const {}", term("const")),
-        ("|| with panic {}", term("panic")),
+        ("|| with unwind {}", term("unwind")),
         ("|value: i32| { return value; }", EffectList::default()),
         ("|value: i32| with const { return value; }", term("const")),
         (
@@ -260,7 +262,7 @@ fn closure_values_are_not_checked_or_executed() {
     for input in [
         crates![crate Foo { fn main() { return || {}; } }],
         crates![crate Foo { fn main() { return || with const {}; } }],
-        crates![crate Foo { fn main() { return || with panic + const {}; } }],
+        crates![crate Foo { fn main() { return || with unwind + const {}; } }],
     ] {
         let error = test_program_ok(input).unwrap_err();
         assert!(format_error_leaves(&error).contains("closure values are not supported yet"));

@@ -78,6 +78,6 @@ pub enum BuiltinEffect {
     #[grammar(async)]
     Async,
 
-    #[grammar(panic)]
-    Panic,
+    #[grammar(unwind)]
+    Unwind,
 }
