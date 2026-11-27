@@ -10,12 +10,12 @@ pub struct Fn {
     pub binder: Binder<FnBoundData>,
 }
 
-#[term($(input_args) $:-> $output_ty $:with $effects $:where $,where_clauses $body)]
+#[term($(input_args) $:-> $output_ty $:where $,where_clauses $:with $effects $body)]
 pub struct FnBoundData {
     pub input_args: Vec<InputArg>,
     pub output_ty: OutputTy,
-    pub effects: EffectList,
     pub where_clauses: Vec<WhereClause>,
+    pub effects: EffectList,
     pub body: MaybeFnBody,
 }
 

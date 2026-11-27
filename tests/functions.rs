@@ -88,7 +88,7 @@ fn with_const_function_checks_its_body_normally() {
             with();
         }
 
-        fn annotate_generic<T>(value: T) -> T with const where T: Bound {
+        fn annotate_generic<T>(value: T) -> T where T: Bound with const {
             return value;
         }
 
@@ -106,6 +106,21 @@ fn with_const_function_round_trips() {
     let plain: Fn = term("fn answer() -> i32 { trusted }");
     assert!(plain.binder.peek().effects.is_empty());
     assert_eq!(term::<Fn>(&format!("{plain:?}")), plain);
+}
+
+#[test]
+fn function_with_clause_follows_where_clause() {
+    let function: Fn = term("fn f() -> i32 where i32: Bound with const { trusted }");
+    let signature = function.binder.peek();
+    assert_eq!(signature.where_clauses.len(), 1);
+    assert_eq!(signature.effects, term("const"));
+
+    let printed = format!("{function:?}");
+    let (before_with, _) = printed.split_once(" with const").unwrap();
+    assert!(before_with.contains(" where "), "{printed}");
+    assert_eq!(term::<Fn>(&printed), function);
+
+    assert!(try_term::<Fn>("fn f() -> i32 with const where i32: Bound { trusted }").is_err());
 }
 
 #[test]
