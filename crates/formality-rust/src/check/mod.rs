@@ -122,17 +122,15 @@ fn check_for_duplicate_items(program: &Program) -> Fallible<ProofTree> {
                         bail!("the feature `{:?}` is declared multiple times", fg)
                     }
                 }
-                CrateItem::EffectAlias(alias) => {
-                    if let EffectName::Builtin(effect) = &alias.name {
+                CrateItem::EffectAlias(alias) => match &alias.id {
+                    EffectName::Builtin(effect) => {
                         bail!("effect alias `{effect:?}` conflicts with a built-in effect");
                     }
-                    if !effect_aliases.insert(&alias.name) {
-                        bail!(
-                            "the effect alias name `{:?}` is defined multiple times",
-                            alias.name
-                        );
+                    EffectName::Alias(id) if !effect_aliases.insert(id) => {
+                        bail!("the effect alias name `{id:?}` is defined multiple times");
                     }
-                }
+                    EffectName::Alias(_) => {}
+                },
                 CrateItem::Test(_) => {}
             }
         }
@@ -247,18 +245,8 @@ judgment_fn! {
 }
 
 fn check_effect_list(crates: &Crates, effects: &EffectList) -> Fallible<()> {
-    let Some(name) = effects.alias_name() else {
-        return Ok(());
-    };
-
-    let mut aliases = crates
-        .items_from_all_crates()
-        .filter(|item| matches!(item, CrateItem::EffectAlias(alias) if &alias.name == name));
-    if aliases.next().is_none() {
-        bail!("unknown effect alias `{name:?}`");
-    }
-    if aliases.next().is_some() {
-        bail!("ambiguous effect alias `{name:?}`");
+    if let Some(id) = effects.alias_id() {
+        crates.effect_alias_named(id)?;
     }
     Ok(())
 }

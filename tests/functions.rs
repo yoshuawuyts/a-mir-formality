@@ -316,8 +316,12 @@ fn with_effect_aliases_resolve_locally_and_in_dependencies() {
 
             fn with() {}
             fn eff() {}
+            fn async() with async {}
+            fn panic() with panic {}
 
-            fn main() -> i32 with reporting {
+            fn main() -> i32 with async_report {
+                async();
+                panic();
                 let value: i32;
                 with eff {
                     value = 1_i32;
@@ -327,6 +331,7 @@ fn with_effect_aliases_resolve_locally_and_in_dependencies() {
             }
 
             eff eff = const;
+            eff async_report = async + panic;
         }
     ])
     .unwrap();

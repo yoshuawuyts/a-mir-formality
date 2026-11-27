@@ -36,7 +36,7 @@ pub fn codegen_program(crates: &Crates) -> Fallible<lang::Program> {
     }) {
         anyhow::bail!(
             "MiniRust codegen does not support effect alias declarations (`{:?}`)",
-            alias.name
+            alias.id
         );
     }
 

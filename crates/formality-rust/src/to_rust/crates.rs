@@ -84,7 +84,7 @@ pub fn lower_crate(
             CrateItem::EffectAlias(alias) => {
                 anyhow::bail!(
                     "Rust lowering does not support effect alias declarations (`{:?}`)",
-                    alias.name
+                    alias.id
                 );
             }
         }

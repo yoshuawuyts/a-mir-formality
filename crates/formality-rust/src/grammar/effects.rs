@@ -1,46 +1,35 @@
 use std::fmt;
 
+use crate::grammar::EffectAliasId;
 use crate::rust::FormalityLang;
 use formality_core::parse::{
-    ActiveVariant, CoreParse, ParseError, ParseResult, ParseSuccessType, Parser, Precedence, Scope,
+    ActiveVariant, CoreParse, ParseError, ParseResult, Parser, Precedence, Scope,
 };
-use formality_core::{id, term};
+use formality_core::term;
 
-id!(EffectAliasId, regex = r"[a-z_][a-z0-9_]*\b");
-
-#[term(eff $name = $effects ;)]
+#[term(eff $id = $effects ;)]
 pub struct EffectAlias {
-    pub name: EffectName,
+    pub id: EffectName,
     pub effects: BuiltinEffectList,
 }
 
 #[term]
-#[customize(parse, debug)]
+#[customize(parse)]
 pub enum EffectName {
+    #[cast]
     Builtin(BuiltinEffect),
+    #[cast]
     Alias(EffectAliasId),
 }
 
 impl CoreParse<FormalityLang> for EffectName {
     fn parse<'t>(scope: &Scope<FormalityLang>, text: &'t str) -> ParseResult<'t, Self> {
         Parser::multi_variant(scope, text, "EffectName", |parser| {
-            parser.parse_variant("builtin", Precedence::default(), |p| {
-                p.each_nonterminal(|effect, p| p.ok(Self::Builtin(effect)))
-            });
-            parser.parse_variant("alias", Precedence::default(), |p| {
-                p.reject_nonterminal::<BuiltinEffect>()?;
-                p.each_nonterminal(|id, p| p.ok(Self::Alias(id)))
-            });
+            parser.parse_variant_cast::<BuiltinEffect>(Precedence::default());
+            if !parser.has_success() {
+                parser.parse_variant_cast::<EffectAliasId>(Precedence::default());
+            }
         })
-    }
-}
-
-impl fmt::Debug for EffectName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Builtin(effect) => effect.fmt(f),
-            Self::Alias(id) => id.fmt(f),
-        }
     }
 }
 
@@ -56,9 +45,9 @@ impl EffectList {
         self.elements.is_empty()
     }
 
-    pub(crate) fn alias_name(&self) -> Option<&EffectName> {
+    pub(crate) fn alias_id(&self) -> Option<&EffectAliasId> {
         match self.elements.as_slice() {
-            [name @ EffectName::Alias(_)] => Some(name),
+            [EffectName::Alias(id)] => Some(id),
             _ => None,
         }
     }
@@ -66,16 +55,22 @@ impl EffectList {
 
 impl CoreParse<FormalityLang> for EffectList {
     fn parse<'t>(scope: &Scope<FormalityLang>, text: &'t str) -> ParseResult<'t, Self> {
-        Parser::single_variant(scope, text, "EffectList", |p| {
-            p.each_nonterminal(|name, p| match name {
-                EffectName::Builtin(effect) => {
-                    parse_builtin_tail(vec![effect], p, &|elements| Self {
+        Parser::multi_variant(scope, text, "EffectList", |parser| {
+            parser.parse_variant("built-in effects", Precedence::default(), |p| {
+                p.each_nonterminal(|BuiltinEffectList { elements }, p| {
+                    p.ok(Self {
                         elements: elements.into_iter().map(EffectName::Builtin).collect(),
                     })
-                }
-                EffectName::Alias(_) => p.ok(Self {
-                    elements: vec![name],
-                }),
+                })
+            });
+            parser.parse_variant("effect alias", Precedence::default(), |p| {
+                // Preserve errors from a malformed list that starts with a built-in.
+                p.reject_nonterminal::<BuiltinEffect>()?;
+                p.each_nonterminal(|id, p| {
+                    p.ok(Self {
+                        elements: vec![EffectName::Alias(id)],
+                    })
+                })
             })
         })
     }
@@ -83,14 +78,7 @@ impl CoreParse<FormalityLang> for EffectList {
 
 impl fmt::Debug for EffectList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if f.alternate() {
-            return f
-                .debug_struct("EffectList")
-                .field("elements", &self.elements)
-                .finish();
-        }
-
-        fmt_list(&self.elements, f)
+        fmt_list("EffectList", &self.elements, f)
     }
 }
 
@@ -100,11 +88,37 @@ pub struct BuiltinEffectList {
     elements: Vec<BuiltinEffect>,
 }
 
+impl BuiltinEffectList {
+    fn parse_rest<'t>(self, p: &mut ActiveVariant<'_, 't, FormalityLang>) -> ParseResult<'t, Self> {
+        if p.expect_char('+').is_err() {
+            return p.ok(self);
+        }
+
+        p.skip_whitespace();
+        let text = p.text();
+        p.each_nonterminal(|effect, p| {
+            if self.elements.contains(&effect) {
+                return Err(ParseError::at(
+                    text,
+                    format!("duplicate built-in effect `{effect:?}`"),
+                ));
+            }
+
+            let mut list = self.clone();
+            list.elements.push(effect);
+            list.parse_rest(p)
+        })
+    }
+}
+
 impl CoreParse<FormalityLang> for BuiltinEffectList {
     fn parse<'t>(scope: &Scope<FormalityLang>, text: &'t str) -> ParseResult<'t, Self> {
         Parser::single_variant(scope, text, "BuiltinEffectList", |p| {
             p.each_nonterminal(|effect, p| {
-                parse_builtin_tail(vec![effect], p, &|elements| Self { elements })
+                Self {
+                    elements: vec![effect],
+                }
+                .parse_rest(p)
             })
         })
     }
@@ -112,43 +126,15 @@ impl CoreParse<FormalityLang> for BuiltinEffectList {
 
 impl fmt::Debug for BuiltinEffectList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if f.alternate() {
-            return f
-                .debug_struct("BuiltinEffectList")
-                .field("elements", &self.elements)
-                .finish();
-        }
-
-        fmt_list(&self.elements, f)
+        fmt_list("BuiltinEffectList", &self.elements, f)
     }
 }
 
-fn parse_builtin_tail<'t, R: ParseSuccessType>(
-    elements: Vec<BuiltinEffect>,
-    p: &mut ActiveVariant<'_, 't, FormalityLang>,
-    build: &impl Fn(Vec<BuiltinEffect>) -> R,
-) -> ParseResult<'t, R> {
-    if p.expect_char('+').is_err() {
-        return p.ok(build(elements));
+fn fmt_list(name: &str, elements: &[impl fmt::Debug], f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    if f.alternate() {
+        return f.debug_struct(name).field("elements", &elements).finish();
     }
 
-    p.skip_whitespace();
-    let text = p.text();
-    p.each_nonterminal(|effect, p| {
-        if elements.contains(&effect) {
-            return Err(ParseError::at(
-                text,
-                format!("duplicate built-in effect `{effect:?}`"),
-            ));
-        }
-
-        let mut elements = elements.clone();
-        elements.push(effect);
-        parse_builtin_tail(elements, p, build)
-    })
-}
-
-fn fmt_list(elements: &[impl fmt::Debug], f: &mut fmt::Formatter<'_>) -> fmt::Result {
     if let Some((first, rest)) = elements.split_first() {
         write!(f, "{first:?}")?;
         for effect in rest {
