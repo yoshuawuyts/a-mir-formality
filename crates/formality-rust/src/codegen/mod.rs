@@ -7,7 +7,7 @@ use crate::check::borrow_check::nll::{
 use crate::check::borrow_check::typed_place_expression::TypedPlaceExpr;
 use crate::grammar::{
     expr::{BinOpKind, Block, Expr, Literal, PlaceExpr, Stmt},
-    Crates, Fallible, RigidName, RigidTy, Ty,
+    CrateItem, Crates, Fallible, RigidName, RigidTy, Ty,
 };
 use formality_core::judgment_fn;
 use libspecr::prelude::Map;
@@ -30,6 +30,16 @@ formality_core::cast_impl!(CodeBlock);
 // ===========================================================================
 
 pub fn codegen_program(crates: &Crates) -> Fallible<lang::Program> {
+    if let Some(alias) = crates.items_from_all_crates().find_map(|item| match item {
+        CrateItem::EffectAlias(alias) => Some(alias),
+        _ => None,
+    }) {
+        anyhow::bail!(
+            "MiniRust codegen does not support effect alias declarations (`{:?}`)",
+            alias.name
+        );
+    }
+
     let crates = crate::check::with_core_crate(crates);
     let mut g = CodegenGlobal::new(&crates);
     let main_key = MonoKey {

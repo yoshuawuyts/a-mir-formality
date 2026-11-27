@@ -4,7 +4,7 @@ use crate::check::borrow_check::outlives::{transitively_outlived_by, verify_univ
 use crate::check::borrow_check::typed_place_expression::{
     TypedPlaceExpr, TypedPlaceExpressionData,
 };
-use crate::check::feature_gate_enabled_in_program;
+use crate::check::{check_effect_list, feature_gate_enabled_in_program};
 
 use crate::grammar::expr::{BinOpKind, Block, Expr, Init, Literal, PlaceExpr, Stmt};
 use crate::grammar::{
@@ -295,9 +295,10 @@ judgment_fn! {
 
         (
             // Nested block statement
+            (let () = check_effect_list(env.crates(), effects)?)
             (borrow_check_block(env, assumptions, state, block, places_live_on_exit) => state)
             ------------------------------------------------------------ ("block")
-            (borrow_check_statement(env, assumptions, state, Stmt::Block { block, .. }, places_live_on_exit) => (env, state))
+            (borrow_check_statement(env, assumptions, state, Stmt::Block { effects, block }, places_live_on_exit) => (env, state))
         )
 
         (
@@ -399,9 +400,10 @@ judgment_fn! {
         )
 
         (
+            (let () = check_effect_list(env.crates(), effects)?)
             (fail "closure values are not supported yet")
             ---- ("closure")
-            (borrow_check_expr(_env, _assumptions, _state, Expr::Closure { .. }, _places_live_on_exit) => ())
+            (borrow_check_expr(env, _assumptions, _state, Expr::Closure { effects, .. }, _places_live_on_exit) => ())
         )
 
         (

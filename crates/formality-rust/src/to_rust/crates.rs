@@ -81,8 +81,57 @@ pub fn lower_crate(
             CrateItem::Test(_) => {
                 todo!("lowering `test` crate items is not implemented yet")
             }
+            CrateItem::EffectAlias(alias) => {
+                anyhow::bail!(
+                    "Rust lowering does not support effect alias declarations (`{:?}`)",
+                    alias.name
+                );
+            }
         }
     }
 
     Ok(syntax::RustCrate { attrs, items })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{codegen::codegen_program, rust::term};
+
+    #[test]
+    fn with_effect_alias_inputs_are_not_lowered_or_generated() {
+        for (input, unsupported) in [
+            (
+                "[crate Dep { eff reporting = const; }, crate App { fn main() {} }]",
+                "effect alias declarations (`reporting`)",
+            ),
+            (
+                "[crate App { fn main() with reporting {} }]",
+                "`with reporting` on functions",
+            ),
+            (
+                "[crate App { fn main() { with reporting {} } }]",
+                "`with reporting` on blocks",
+            ),
+            (
+                "[crate App { fn main() { return || with reporting {}; } }]",
+                "closures",
+            ),
+        ] {
+            let program = term(input);
+            let rust_error = build_crates(&mut Context::default(), &program).unwrap_err();
+            let minirust_error = codegen_program(&program).unwrap_err();
+            assert_eq!(
+                rust_error.to_string(),
+                format!("Rust lowering does not support {unsupported}"),
+                "{input}"
+            );
+            assert!(
+                minirust_error
+                    .to_string()
+                    .contains(&format!("MiniRust codegen does not support {unsupported}")),
+                "{input}\n{minirust_error}"
+            );
+        }
+    }
 }

@@ -76,7 +76,8 @@ impl Crates {
                 | CrateItem::TraitImpl(_)
                 | CrateItem::NegTraitImpl(_)
                 | CrateItem::Fn(_)
-                | CrateItem::Test(_) => None,
+                | CrateItem::Test(_)
+                | CrateItem::EffectAlias(_) => None,
             })
             .collect();
 
@@ -115,7 +116,8 @@ impl Crates {
                 | CrateItem::TraitImpl(_)
                 | CrateItem::NegTraitImpl(_)
                 | CrateItem::Fn(_)
-                | CrateItem::Test(_) => None,
+                | CrateItem::Test(_)
+                | CrateItem::EffectAlias(_) => None,
             })
             .collect();
 
