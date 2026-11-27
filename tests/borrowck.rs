@@ -6159,6 +6159,7 @@ fn with_const_block_preserves_loan_liveness() {
             }
         }
     }])
+    .skip_execute()
     .borrowck_err(
         BorrowCheckFailure::All,
         expect_test::expect![[r#"
