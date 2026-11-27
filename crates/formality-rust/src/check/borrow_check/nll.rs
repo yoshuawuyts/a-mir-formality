@@ -297,13 +297,7 @@ judgment_fn! {
             // Nested block statement
             (borrow_check_block(env, assumptions, state, block, places_live_on_exit) => state)
             ------------------------------------------------------------ ("block")
-            (borrow_check_statement(env, assumptions, state, Stmt::Block(block), places_live_on_exit) => (env, state))
-        )
-
-        (
-            (borrow_check_block(env, assumptions, state, block, places_live_on_exit) => state)
-            ------------------------------------------------------------ ("effect block")
-            (borrow_check_statement(env, assumptions, state, Stmt::EffectBlock { block, .. }, places_live_on_exit) => (env, state))
+            (borrow_check_statement(env, assumptions, state, Stmt::Block { block, .. }, places_live_on_exit) => (env, state))
         )
 
         (
@@ -405,9 +399,9 @@ judgment_fn! {
         )
 
         (
-            (fail "effect-annotated closure values are not supported yet")
-            ---- ("effect closure")
-            (borrow_check_expr(_env, _assumptions, _state, Expr::EffectClosure { .. }, _places_live_on_exit) => ())
+            (fail "closure values are not supported yet")
+            ---- ("closure")
+            (borrow_check_expr(_env, _assumptions, _state, Expr::Closure { .. }, _places_live_on_exit) => ())
         )
 
         (

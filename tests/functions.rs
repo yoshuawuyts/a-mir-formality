@@ -4,7 +4,7 @@ use a_mir_formality::{crates, test_program_ok, FormalityTest};
 use formality_core::test_util::format_error_leaves;
 use formality_rust::grammar::{
     expr::{Expr, Stmt},
-    Crates, Fn,
+    Crates, EffectList, Fn,
 };
 use formality_rust::rust::{term, try_term};
 
@@ -145,10 +145,18 @@ fn with_const_block_checks_its_body_in_a_nested_scope() {
 }
 
 #[test]
-fn with_const_block_round_trips() {
-    let statement: Stmt = term("with const { prepare(); }");
-    assert!(matches!(statement, Stmt::EffectBlock { .. }));
-    assert_eq!(term::<Stmt>(&format!("{statement:?}")), statement);
+fn blocks_round_trip_with_or_without_effects() {
+    for (source, expected) in [
+        ("{ prepare(); }", EffectList::default()),
+        ("with const { prepare(); }", term("const")),
+    ] {
+        let statement: Stmt = term(source);
+        let Stmt::Block { effects, .. } = &statement else {
+            panic!("expected a block: {statement:?}");
+        };
+        assert_eq!(effects, &expected);
+        assert_eq!(term::<Stmt>(&format!("{statement:?}")), statement);
+    }
     assert!(try_term::<Stmt>("with {}").is_err());
     assert!(try_term::<Stmt>("with Const {}").is_err());
 }
@@ -163,13 +171,18 @@ fn with_const_block_is_not_executable() {
 }
 
 #[test]
-fn with_const_closure_round_trips() {
-    for source in [
-        "|| with const {}",
-        "|value: i32| with const { return value; }",
+fn closures_round_trip_with_or_without_effects() {
+    for (source, expected) in [
+        ("|| {}", EffectList::default()),
+        ("|| with const {}", term("const")),
+        ("|value: i32| { return value; }", EffectList::default()),
+        ("|value: i32| with const { return value; }", term("const")),
     ] {
         let expr: Expr = term(source);
-        assert!(matches!(expr, Expr::EffectClosure { .. }));
+        let Expr::Closure { effects, .. } = &expr else {
+            panic!("expected a closure: {expr:?}");
+        };
+        assert_eq!(effects, &expected);
         assert_eq!(term::<Expr>(&format!("{expr:?}")), expr);
     }
     assert!(try_term::<Expr>("|| with {}").is_err());
@@ -177,15 +190,18 @@ fn with_const_closure_round_trips() {
 }
 
 #[test]
-fn with_const_closure_values_are_not_checked_or_executed() {
-    let input = crates![crate Foo { fn main() { return || with const {}; } }];
-    let error = test_program_ok(input).unwrap_err();
-    assert!(format_error_leaves(&error)
-        .contains("effect-annotated closure values are not supported yet"));
+fn closure_values_are_not_checked_or_executed() {
+    for input in [
+        crates![crate Foo { fn main() { return || {}; } }],
+        crates![crate Foo { fn main() { return || with const {}; } }],
+    ] {
+        let error = test_program_ok(input).unwrap_err();
+        assert!(format_error_leaves(&error).contains("closure values are not supported yet"));
 
-    let program: Crates = term(input);
-    let error = formality_rust::codegen::codegen_program(&program).unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("MiniRust codegen does not support effect-annotated closures"));
+        let program: Crates = term(input);
+        let error = formality_rust::codegen::codegen_program(&program).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("MiniRust codegen does not support closures"));
+    }
 }

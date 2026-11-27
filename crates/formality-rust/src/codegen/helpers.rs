@@ -170,17 +170,20 @@ pub(super) fn resolve_fn_body(
 ) -> Fallible<(grammar::FnBoundData, Block)> {
     let fn_def = g.crates.fn_named(&key.id)?;
     let fn_data = fn_def.binder.instantiate_with(&key.args)?;
-    if !fn_data.effects.is_empty() {
-        anyhow::bail!(
-            "MiniRust codegen does not support `with {:?}` on functions",
-            fn_data.effects
-        );
-    }
+    require_no_effects(&fn_data.effects, "functions")?;
     let body = match &fn_data.body {
         grammar::MaybeFnBody::FnBody(grammar::FnBody::Expr(b)) => b.clone(),
         _ => anyhow::bail!("function {:?} must have expression body", key.id),
     };
     Ok((fn_data, body))
+}
+
+pub(super) fn require_no_effects(effects: &grammar::EffectList, target: &str) -> Fallible<()> {
+    anyhow::ensure!(
+        effects.is_empty(),
+        "MiniRust codegen does not support `with {effects:?}` on {target}"
+    );
+    Ok(())
 }
 
 /// Extract the single result from a ProvenSet, or error.

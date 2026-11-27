@@ -332,9 +332,7 @@ impl LiveBefore for Stmt {
                 // The return expression is evaluated, but nothing after return is live.
                 expr.live_before(env, scopes, LivePlaces::default())
             }
-            Stmt::Block(block) | Stmt::EffectBlock { block, .. } => {
-                block.live_before(env, scopes, places_live)
-            }
+            Stmt::Block { block, .. } => block.live_before(env, scopes, places_live),
             Stmt::Exists { binder } => {
                 let (_vars, block) = binder.open();
                 block.live_before(env, scopes, places_live)
@@ -378,7 +376,7 @@ impl LiveBefore for Expr {
             Expr::Parens(expr) => expr.live_before(env, scopes, places_live),
 
             // The checker rejects closure values before analyzing captures.
-            Expr::EffectClosure { .. } => places_live,
+            Expr::Closure { .. } => places_live,
 
             // Literals don't access any places.
             Expr::Literal { .. } | Expr::True | Expr::False => places_live,

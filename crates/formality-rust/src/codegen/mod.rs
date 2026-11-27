@@ -204,15 +204,10 @@ judgment_fn! {
         )
 
         (
+            (let () = require_no_effects(effects, "blocks")?)
             (codegen_block(global, cfn, scope, block) => (code, global, cfn))
             ---- ("block")
-            (codegen_stmt(global, cfn, scope, Stmt::Block(block)) => (code, scope, global, cfn))
-        )
-
-        (
-            (fail "MiniRust codegen does not support `with {:?}` on blocks", effects)
-            ---- ("effect block")
-            (codegen_stmt(_global, _cfn, _scope, Stmt::EffectBlock { effects, .. }) => ())
+            (codegen_stmt(global, cfn, scope, Stmt::Block { effects, block }) => (code, scope, global, cfn))
         )
 
         (
@@ -248,9 +243,9 @@ judgment_fn! {
         )
 
         (
-            (fail "MiniRust codegen does not support effect-annotated closures")
-            ---- ("effect closure")
-            (codegen_expr_into(_global, _cfn, _scope, _target, Expr::EffectClosure { .. }) => ())
+            (fail "MiniRust codegen does not support closures")
+            ---- ("closure")
+            (codegen_expr_into(_global, _cfn, _scope, _target, Expr::Closure { .. }) => ())
         )
 
         (

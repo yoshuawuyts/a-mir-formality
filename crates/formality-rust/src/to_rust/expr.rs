@@ -51,9 +51,12 @@ pub fn lower_stmt(ctx: &mut Context, stmt: &Stmt) -> Fallible<syntax::Stmt> {
         Stmt::Return { expr } => Ok(syntax::Stmt::Return {
             expr: lower_expr(ctx, expr)?,
         }),
-        Stmt::Block(block) => Ok(syntax::Stmt::Block(lower_block(ctx, block)?)),
-        Stmt::EffectBlock { effects, .. } => {
-            anyhow::bail!("Rust lowering does not support `with {effects:?}` on blocks")
+        Stmt::Block { effects, block } => {
+            anyhow::ensure!(
+                effects.is_empty(),
+                "Rust lowering does not support `with {effects:?}` on blocks"
+            );
+            Ok(syntax::Stmt::Block(lower_block(ctx, block)?))
         }
         Stmt::Exists { binder } => lower_exists_stmt(ctx, binder),
         Stmt::Print { expr } => Ok(syntax::Stmt::Expr(lower_expr(ctx, expr)?)),
@@ -111,8 +114,8 @@ pub fn lower_expr(ctx: &mut Context, expr: &Expr) -> Fallible<syntax::Expr> {
             suffix: tys::scalar_to_string(ty),
         }),
         Expr::Parens(expr) => Ok(syntax::Expr::Paren(Box::new(lower_expr(ctx, expr)?))),
-        Expr::EffectClosure { .. } => {
-            anyhow::bail!("Rust lowering does not support effect-annotated closures")
+        Expr::Closure { .. } => {
+            anyhow::bail!("Rust lowering does not support closures")
         }
         Expr::True => Ok(syntax::Expr::Bool(true)),
         Expr::False => Ok(syntax::Expr::Bool(false)),
@@ -272,13 +275,12 @@ mod test {
     }
 
     #[test]
-    fn with_const_closure_is_not_lowered() {
-        let error = lower_expr(&mut Context::default(), &term("|| with const {}"))
-            .expect_err("Rust lowering must reject the closure");
-        assert_eq!(
-            error.to_string(),
-            "Rust lowering does not support effect-annotated closures"
-        );
+    fn closures_are_not_lowered() {
+        for source in ["|| {}", "|| with const {}"] {
+            let error = lower_expr(&mut Context::default(), &term(source))
+                .expect_err("Rust lowering must reject the closure");
+            assert_eq!(error.to_string(), "Rust lowering does not support closures");
+        }
     }
 
     #[test]
