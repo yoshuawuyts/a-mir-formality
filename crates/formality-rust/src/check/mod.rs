@@ -6,8 +6,8 @@ use crate::prove::{enter_universally, is_definitely_not_proveable, Constraints, 
 use crate::rust::Visit;
 use crate::{
     grammar::{
-        Crate, CrateId, CrateItem, Crates, Fallible, FeatureGateName, Predicates, Test,
-        TestBoundData,
+        Crate, CrateId, CrateItem, Crates, EffectList, EffectName, Fallible, FeatureGateName,
+        Predicates, Test, TestBoundData,
     },
     prove::ToPredicates,
 };
@@ -89,6 +89,7 @@ fn check_for_duplicate_items(program: &Program) -> Fallible<ProofTree> {
         let mut impl_decls = Set::new();
         let mut neg_impl_decls = Set::new();
         let mut feature_gates = Set::new();
+        let mut effect_aliases = Set::new();
         for item in c.items.iter() {
             match item {
                 CrateItem::AdtItem(s) => {
@@ -121,6 +122,15 @@ fn check_for_duplicate_items(program: &Program) -> Fallible<ProofTree> {
                         bail!("the feature `{:?}` is declared multiple times", fg)
                     }
                 }
+                CrateItem::EffectAlias(alias) => match &alias.id {
+                    EffectName::Builtin(effect) => {
+                        bail!("effect alias `{effect:?}` conflicts with a built-in effect");
+                    }
+                    EffectName::Alias(id) if !effect_aliases.insert(id) => {
+                        bail!("the effect alias name `{id:?}` is defined multiple times");
+                    }
+                    EffectName::Alias(_) => {}
+                },
                 CrateItem::Test(_) => {}
             }
         }
@@ -156,7 +166,7 @@ fn item_has_non_lifetime_binder(item: &CrateItem) -> bool {
         CrateItem::TraitImpl(t) => &t.binder.peek().where_clauses,
         CrateItem::NegTraitImpl(nt) => &nt.binder.peek().where_clauses,
         CrateItem::Fn(f) => &f.binder.peek().where_clauses,
-        CrateItem::FeatureGate(_) | CrateItem::Test(_) => return false,
+        CrateItem::FeatureGate(_) | CrateItem::Test(_) | CrateItem::EffectAlias(_) => return false,
     };
 
     where_clauses.iter().any(|wc| wc.has_non_lifetime_binder())
@@ -226,7 +236,19 @@ judgment_fn! {
             ------------------------------------------------------------ ("feature gate")
             (check_crate_item(program, CrateItem::FeatureGate(_feature_gate), crate_id) => ())
         )
+
+        (
+            ------------------------------------------------------------ ("effect alias")
+            (check_crate_item(program, CrateItem::EffectAlias(_alias), crate_id) => ())
+        )
     }
+}
+
+fn check_effect_list(crates: &Crates, effects: &EffectList) -> Fallible<()> {
+    if let Some(id) = effects.alias_id() {
+        crates.effect_alias_named(id)?;
+    }
+    Ok(())
 }
 
 fn check_test(program: &Program, test: &Test) -> Fallible<ProofTree> {

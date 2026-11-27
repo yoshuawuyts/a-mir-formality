@@ -3,6 +3,7 @@ use formality_core::id;
 id!(ValueId);
 id!(AdtId);
 id!(TraitId);
+id!(EffectAliasId, regex = r"[a-z_][a-z0-9_]*\b");
 id!(AssociatedItemId);
 id!(CrateId);
 id!(FieldId);

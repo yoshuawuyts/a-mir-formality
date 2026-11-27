@@ -1,8 +1,8 @@
 use crate::check::borrow_check::env::TypeckEnv;
 use crate::check::borrow_check::flow_state::FlowState;
 use crate::check::borrow_check::nll::borrow_check;
-use crate::check::prove_goal;
 use crate::check::where_clauses::prove_where_clauses_well_formed;
+use crate::check::{check_effect_list, prove_goal};
 use crate::grammar::{AtomicPredicate, CrateId, FnBody, MaybeFnBody, Predicates};
 use crate::prove::{enter_universally, Env, Program};
 use crate::{
@@ -45,7 +45,8 @@ judgment_fn! {
         assert(env.only_universal_variables() && env.encloses((assumptions, f)))
 
         (
-            (scope(enter_universally(env, &f.binder) => (env, FnBoundData { input_args, output_ty, where_clauses, body, .. })) with()
+            (scope(enter_universally(env, &f.binder) => (env, FnBoundData { input_args, output_ty, effects, where_clauses, body })) with()
+                (let () = check_effect_list(program.program(), effects)?)
                 (let assumptions: Predicates = (assumptions, where_clauses).to_predicates())
                 (prove_where_clauses_well_formed(program, env, assumptions, where_clauses) => ())
                 (for_all(input_arg in input_args)

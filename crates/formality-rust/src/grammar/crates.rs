@@ -1,4 +1,4 @@
-use crate::grammar::{Adt, AdtId, Binder, CrateId};
+use crate::grammar::{Adt, AdtId, Binder, CrateId, EffectAlias};
 use crate::grammar::{Enum, Fn, NegTraitImpl, Struct, Trait, TraitImpl, WhereClause};
 use formality_core::term;
 
@@ -26,6 +26,8 @@ pub enum CrateItem {
     Fn(Fn),
     #[cast]
     Test(Test),
+    #[cast]
+    EffectAlias(EffectAlias),
 }
 
 #[term]

@@ -4,7 +4,7 @@ use a_mir_formality::{crates, test_program_ok, FormalityTest};
 use formality_core::test_util::format_error_leaves;
 use formality_rust::grammar::{
     expr::{Expr, Stmt},
-    Crates, EffectList, Fn,
+    CrateItem, Crates, EffectList, Fn,
 };
 use formality_rust::rust::{term, try_term};
 
@@ -142,9 +142,9 @@ fn with_effects_rejects_invalid_clauses() {
         "",
         "Const",
         "const + Async",
-        "other",
+        "other + const",
+        "other + other",
         "unwind + other",
-        "panic",
         "const + panic",
         "+ const",
         "const +",
@@ -273,4 +273,186 @@ fn closure_values_are_not_checked_or_executed() {
             .to_string()
             .contains("MiniRust codegen does not support closures"));
     }
+}
+
+#[test]
+fn with_effect_aliases_round_trip() {
+    let program: Crates = term(crates![crate Foo {
+        eff reporting = async + unwind;
+
+        fn report() with reporting {
+            with reporting {}
+            return |value: i32| with reporting { return value; };
+        }
+    }]);
+    let printed = format!("{program:?}");
+    assert!(
+        printed.contains("eff reporting = async + unwind"),
+        "{printed}"
+    );
+    assert_eq!(printed.matches("with reporting").count(), 3, "{printed}");
+    assert_eq!(term::<Crates>(&printed), program);
+}
+
+#[test]
+fn with_effect_aliases_resolve_locally_and_in_dependencies() {
+    let _ = test_program_ok(crates![
+        crate Dep {
+            eff reporting = async + unwind;
+        },
+        crate App {
+            trait Report {
+                fn report() with reporting;
+            }
+
+            impl Report for i32 {
+                fn report() with eff {
+                    with reporting {
+                        with();
+                        eff();
+                    }
+                }
+            }
+
+            fn with() {}
+            fn eff() {}
+            fn async() with async {}
+            fn unwind() with unwind {}
+
+            fn main() -> i32 with async_report {
+                async();
+                unwind();
+                let value: i32;
+                with eff {
+                    value = 1_i32;
+                    let value: bool = true;
+                }
+                return value;
+            }
+
+            eff eff = const;
+            eff async_report = async + unwind;
+        }
+    ])
+    .unwrap();
+}
+
+#[test]
+fn with_effect_aliases_reject_unknown_names() {
+    let check = |input: &str, name: &str| {
+        let error = test_program_ok(input).unwrap_err();
+        let diagnostic = format_error_leaves(&error);
+        assert!(
+            diagnostic.contains(&format!("unknown effect alias `{name}`")),
+            "{input}\n{diagnostic}"
+        );
+    };
+
+    for input in [
+        crates![crate Foo { fn missing() {} fn main() with missing {} }],
+        crates![crate Foo { trait Report { fn report() with missing; } }],
+        crates![crate Foo {
+            trait Report { fn report(); }
+            impl Report for i32 { fn report() with missing {} }
+        }],
+        crates![crate Foo { fn main() { with missing {} } }],
+        crates![crate Foo { fn main() { return || with missing {}; } }],
+        crates![
+            crate Early { fn main() with missing {} },
+            crate Later { eff missing = const; }
+        ],
+    ] {
+        check(input, "missing");
+    }
+    check(crates![crate Foo { fn main() with panic {} }], "panic");
+}
+
+#[test]
+fn with_effect_aliases_require_a_unique_visible_definition() {
+    let _ = test_program_ok(crates![
+        crate Early { eff reporting = async; fn early() with reporting {} },
+        crate Later { eff reporting = unwind; }
+    ])
+    .unwrap();
+
+    for input in [
+        crates![
+            crate Early { eff reporting = async; },
+            crate Later { eff reporting = unwind; fn later() with reporting {} }
+        ],
+        crates![
+            crate Early { eff reporting = async; },
+            crate Later { eff reporting = const; fn later() { return || with reporting {}; } }
+        ],
+    ] {
+        let error = test_program_ok(input).unwrap_err();
+        let diagnostic = format_error_leaves(&error);
+        assert!(
+            diagnostic.contains("ambiguous effect alias `reporting`"),
+            "{input}\n{diagnostic}"
+        );
+        assert!(
+            !diagnostic.contains("closure values are not supported yet"),
+            "{input}\n{diagnostic}"
+        );
+    }
+}
+
+#[test]
+fn with_effect_aliases_reject_duplicate_or_reserved_declarations() {
+    let error =
+        test_program_ok(crates![crate Foo { eff reporting = const; eff reporting = async; }])
+            .unwrap_err();
+    let diagnostic = format_error_leaves(&error);
+    assert!(
+        diagnostic.contains("the effect alias name `reporting` is defined multiple times"),
+        "{diagnostic}"
+    );
+
+    for builtin in ["const", "async", "unwind"] {
+        let error =
+            test_program_ok(&format!("[crate Foo {{ eff {builtin} = const; }}]")).unwrap_err();
+        let diagnostic = format_error_leaves(&error);
+        assert!(
+            diagnostic.contains(&format!(
+                "effect alias `{builtin}` conflicts with a built-in effect"
+            )),
+            "{diagnostic}"
+        );
+    }
+}
+
+#[test]
+fn with_effect_aliases_reject_invalid_declarations() {
+    for input in [
+        "eff reporting = ;",
+        "eff reporting = logging;",
+        "eff reporting = panic;",
+        "eff reporting = async + logging;",
+        "eff reporting = const",
+        "eff Reporting = const;",
+        "eff reportIng = const;",
+    ] {
+        assert!(try_term::<CrateItem>(input).is_err(), "accepted {input}");
+    }
+
+    assert!(try_term::<Fn>("fn f() { eff reporting = async; }").is_err());
+    let error = try_term::<CrateItem>("eff reporting = const + const;").unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("duplicate built-in effect `const`"));
+}
+
+#[test]
+fn with_effect_aliases_do_not_enable_closure_values() {
+    let error = test_program_ok(crates![
+        crate Dep { eff reporting = unwind; },
+        crate App { fn main() { return || with reporting {}; } }
+    ])
+    .unwrap_err();
+    let diagnostic = format_error_leaves(&error);
+    assert!(
+        diagnostic.contains("closure values are not supported yet"),
+        "{diagnostic}"
+    );
 }

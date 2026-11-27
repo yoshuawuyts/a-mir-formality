@@ -1,5 +1,7 @@
-use crate::grammar::{AdtId, AdtItem, Crate, CrateId, CrateItem, Fn, Struct, Trait, ValueId};
-use crate::grammar::{Fallible, TraitId};
+use crate::grammar::{
+    AdtId, AdtItem, Crate, CrateId, CrateItem, EffectAlias, EffectAliasId, Fallible, Fn, Struct,
+    Trait, TraitId, ValueId,
+};
 use formality_core::term;
 
 #[term($crates)]
@@ -64,6 +66,20 @@ impl Crates {
         }
     }
 
+    pub(crate) fn effect_alias_named(&self, id: &EffectAliasId) -> Fallible<&EffectAlias> {
+        let mut aliases = self.items_from_all_crates().filter_map(|item| match item {
+            CrateItem::EffectAlias(alias) if alias.id.as_alias() == Some(id) => Some(alias),
+            _ => None,
+        });
+        let Some(alias) = aliases.next() else {
+            anyhow::bail!("unknown effect alias `{id:?}`");
+        };
+        if aliases.next().is_some() {
+            anyhow::bail!("ambiguous effect alias `{id:?}`");
+        }
+        Ok(alias)
+    }
+
     pub fn struct_named(&self, adt_id: &AdtId) -> Fallible<&Struct> {
         let mut structs: Vec<&Struct> = self
             .items_from_all_crates()
@@ -76,7 +92,8 @@ impl Crates {
                 | CrateItem::TraitImpl(_)
                 | CrateItem::NegTraitImpl(_)
                 | CrateItem::Fn(_)
-                | CrateItem::Test(_) => None,
+                | CrateItem::Test(_)
+                | CrateItem::EffectAlias(_) => None,
             })
             .collect();
 
@@ -115,7 +132,8 @@ impl Crates {
                 | CrateItem::TraitImpl(_)
                 | CrateItem::NegTraitImpl(_)
                 | CrateItem::Fn(_)
-                | CrateItem::Test(_) => None,
+                | CrateItem::Test(_)
+                | CrateItem::EffectAlias(_) => None,
             })
             .collect();
 
