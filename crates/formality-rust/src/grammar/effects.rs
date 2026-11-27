@@ -45,6 +45,10 @@ impl EffectList {
         self.elements.is_empty()
     }
 
+    pub(crate) fn contains_builtin(&self, effect: BuiltinEffect) -> bool {
+        self.elements.contains(&EffectName::Builtin(effect))
+    }
+
     pub(crate) fn alias_id(&self) -> Option<&EffectAliasId> {
         match self.elements.as_slice() {
             [EffectName::Alias(id)] => Some(id),
@@ -89,6 +93,10 @@ pub struct BuiltinEffectList {
 }
 
 impl BuiltinEffectList {
+    pub(crate) fn contains(&self, effect: &BuiltinEffect) -> bool {
+        self.elements.contains(effect)
+    }
+
     fn parse_rest<'t>(self, p: &mut ActiveVariant<'_, 't, FormalityLang>) -> ParseResult<'t, Self> {
         if p.expect_char('+').is_err() {
             return p.ok(self);
@@ -97,7 +105,7 @@ impl BuiltinEffectList {
         p.skip_whitespace();
         let text = p.text();
         p.each_nonterminal(|effect, p| {
-            if self.elements.contains(&effect) {
+            if self.contains(&effect) {
                 return Err(ParseError::at(
                     text,
                     format!("duplicate built-in effect `{effect:?}`"),

@@ -1,4 +1,5 @@
-use a_mir_formality::{crates, FormalityTest};
+use a_mir_formality::{crates, test_program_ok, FormalityTest};
+use formality_core::test_util::format_error_leaves;
 
 #[test]
 fn i128_is_copy() {
@@ -34,6 +35,73 @@ fn trait_with_valid_fn() {
     .skip_execute()
     .rustc_ok()
     .ok();
+}
+
+#[test]
+fn trait_impl_can_keep_or_omit_unwind_from_the_trait_signature() {
+    let _ = test_program_ok(crates![
+        crate Dep {
+            eff reporting = async + unwind;
+            trait Report {
+                fn report() with reporting;
+                fn quiet() with reporting;
+            }
+            fn may_unwind() with unwind { trusted }
+        },
+        crate App {
+            eff reporting = async;
+            eff handling = unwind;
+            struct Local {}
+            impl Report for Local {
+                fn report() with handling { may_unwind(); }
+                fn quiet() {}
+            }
+        }
+    ])
+    .unwrap();
+}
+
+#[test]
+fn trait_impl_cannot_add_unwind_to_the_trait_signature() {
+    let error = test_program_ok(crates![
+        crate Dep {
+            eff reporting = async;
+            trait Report { fn report() with reporting; }
+        },
+        crate App {
+            eff reporting = unwind;
+            eff handling = unwind;
+            struct Local {}
+            impl Report for Local {
+                fn report() with handling {}
+            }
+        }
+    ])
+    .unwrap_err();
+    let diagnostic = format_error_leaves(&error);
+    assert!(
+        diagnostic.contains(
+            "impl method `report` requires the `unwind` effect, but the trait method does not"
+        ),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn trait_impl_body_does_not_inherit_the_trait_unwind_effect() {
+    let error = test_program_ok(crates![crate Foo {
+        trait Report { fn report() with unwind; }
+        fn may_unwind() with unwind { trusted }
+        impl Report for i32 {
+            fn report() { may_unwind(); }
+        }
+    }])
+    .unwrap_err();
+    let diagnostic = format_error_leaves(&error);
+    assert!(
+        diagnostic.contains("call to `may_unwind` requires the `unwind` effect"),
+        "{diagnostic}"
+    );
 }
 
 #[test]
