@@ -6134,6 +6134,49 @@ fn compound_assignment_keeps_destination_reference_live() {
     );
 }
 
+#[test]
+fn with_const_block_preserves_loan_liveness() {
+    FormalityTest::new(crates![crate Foo {
+        fn check() {
+            exists<'r> {
+                let value: i32 = 0_i32;
+                let loan: &'r i32 = &'r value;
+                with const { println!(*loan); }
+                value = 1_i32;
+            }
+        }
+    }])
+    .skip_execute()
+    .borrowck_ok();
+
+    FormalityTest::new(crates![crate Foo {
+        fn check() {
+            exists<'r> {
+                let value: i32 = 0_i32;
+                let loan: &'r i32 = &'r value;
+                value = 1_i32;
+                with const { println!(*loan); }
+            }
+        }
+    }])
+    .borrowck_err(
+        BorrowCheckFailure::All,
+        expect_test::expect![[r#"
+        the rule "borrow of disjoint places" at (nll.rs) failed because
+          condition evaluated to false: `place_disjoint_from_place(&loan.place, &access.place)`
+            &loan.place = value : i32
+            &access.place = value : i32
+
+        the rule "loan_cannot_outlive" at (nll.rs) failed because
+          condition evaluated to false: `!outlived_by_loan.contains(&lifetime.upcast())`
+            outlived_by_loan = {?lt_1}
+            &lifetime.upcast() = ?lt_1
+
+        the rule "write-indirect" at (nll.rs) failed because
+          pattern `TypedPlaceExpressionData::Deref(place_loaned_ref)` did not match value `value`"#]],
+    );
+}
+
 /// A later argument reads `r`, so the shared borrow of `v` is still live
 /// when the first argument borrows `v` mutably.
 ///
