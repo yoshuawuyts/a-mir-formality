@@ -150,9 +150,6 @@ fn with_effects_rejects_invalid_clauses() {
         "const async",
         "const, async",
         "(const + async)",
-        "const + const",
-        "const + panic + const",
-        "const + panic + panic",
     ] {
         let block = format!("with {list} {{}}");
         let function = format!("fn f() {block}");
@@ -160,6 +157,29 @@ fn with_effects_rejects_invalid_clauses() {
         assert!(try_term::<Fn>(&function).is_err(), "accepted {function}");
         assert!(try_term::<Stmt>(&block).is_err(), "accepted {block}");
         assert!(try_term::<Expr>(&closure).is_err(), "accepted {closure}");
+    }
+}
+
+#[test]
+fn with_effects_reports_duplicate_names() {
+    for (list, duplicate) in [
+        ("const + const", "const"),
+        ("const + panic + const", "const"),
+        ("const + panic + panic", "panic"),
+    ] {
+        let block = format!("with {list} {{}}");
+        let function = format!("fn f() {block}");
+        let closure = format!("|| {block}");
+        let expected = format!("duplicate built-in effect `{duplicate}`");
+
+        for (source, error) in [
+            (&function, try_term::<Fn>(&function).err()),
+            (&block, try_term::<Stmt>(&block).err()),
+            (&closure, try_term::<Expr>(&closure).err()),
+        ] {
+            let error = error.unwrap_or_else(|| panic!("accepted {source}"));
+            assert!(error.to_string().contains(&expected), "{source}: {error}");
+        }
     }
 }
 
